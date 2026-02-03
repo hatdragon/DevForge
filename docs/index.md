@@ -24,6 +24,35 @@ All from inside the game.
 
 ---
 
+## Core Tools
+
+### 🔧 Interactive Lua Console
+
+![DevForge Console]({{ site.baseurl }}/assets/images/console.png)
+
+Write and execute Lua snippets directly in-game with a persistent scratchpad and saved snippets.
+
+- Execute exploratory code safely
+- Inspect tables and runtime state
+- Maintain reusable snippets
+- Clearly marked tainted execution context
+
+---
+
+### 🔍 Live Frame Inspector
+
+![DevForge Frame Inspector]({{ site.baseurl }}/assets/images/inspector.png)
+
+Inspect live UI frames in real time.
+
+- Traverse frame hierarchies
+- View geometry, strata, anchors, and visibility
+- Inspect registered events and scripts
+- Jump directly to Blizzard Frame Stack output
+- Generate helper code from selected frames
+
+---
+
 ## Why DevForge Exists
 
 As World of Warcraft’s addon environment continues to evolve — especially with increasing restrictions in Retail — developers need better visibility and safer tooling.
@@ -33,7 +62,7 @@ DevForge focuses on:
 - Capability-based features
 - Compatibility across Retail and Classic clients
 
-It also includes optional tooling to help bridge existing workflows as the addon ecosystem changes.
+It also includes optional tooling designed to help bridge existing workflows as the addon ecosystem changes.
 
 ---
 
@@ -43,7 +72,7 @@ It also includes optional tooling to help bridge existing workflows as the addon
 - **Classic (current line):** Actively targeting parity
 - **Classic Era:** Planned
 
-Features automatically adapt based on client capabilities.
+Features automatically adapt based on client capabilities and available APIs.
 
 ---
 
@@ -73,4 +102,6 @@ Documentation, contribution guidelines, and additional tooling details will expa
 
 ---
 
-*DevForge is intended for development and debugging use. It does not automate gameplay or bypass secure systems.*
+> ⚠️ DevForge includes tools that allow live Lua execution.  
+> It is intended for development and debugging use only and does not automate gameplay or bypass secure systems.
+

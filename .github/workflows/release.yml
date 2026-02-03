@@ -30,11 +30,18 @@ jobs:
       - name: Build zip (Retail)
         run: |
           mkdir -p dist
-          (cd DevForge && zip -r "../dist/DevForge-${{ steps.ver.outputs.tag }}.zip" . \
+          # Zip the folder itself so the archive contains DevForge/...
+          zip -r "dist/DevForge-${{ steps.ver.outputs.tag }}.zip" "DevForge" \
             -x "*.psd" "*.xcf" "*.blend" \
             -x "*.kra" "*.aseprite" \
             -x "*.zip" "*.7z" "*.rar" \
-            -x "**/.DS_Store" "**/Thumbs.db")
+            -x "**/.DS_Store" "**/Thumbs.db"
+
+      - name: Verify zip structure
+        run: |
+          unzip -l "dist/DevForge-${{ steps.ver.outputs.tag }}.zip" | head -n 30
+          unzip -l "dist/DevForge-${{ steps.ver.outputs.tag }}.zip" | grep -q "^ *.* DevForge/DevForge.toc$" \
+            || (echo "Zip missing DevForge/DevForge.toc" && exit 1)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

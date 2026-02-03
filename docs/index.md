@@ -28,7 +28,7 @@ All from inside the game.
 
 ### 🔧 Interactive Lua Console
 
-![DevForge Console]({{ site.baseurl }}/assets/images/console.png)
+![DevForge Console]({{ site.baseurl }}/assets/images/editor.png)
 
 Write and execute Lua snippets directly in-game with a persistent scratchpad and saved snippets.
 

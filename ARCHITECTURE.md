@@ -119,24 +119,24 @@ sequenceDiagram
     Note over TOC: All files loaded. WoW fires ADDON_LOADED.
 
     WoW->>Init: ADDON_LOADED "DevForge"
-    Init->>Schema: Schema:Init()
+    Init->>Schema: Schema.Init()
     Schema->>Schema: Apply defaults to DevForgeDB
     Schema->>Schema: Run migrations
-    Init->>Init: ErrorHandler:Init() (hook seterrorhandler)
-    Init->>Init: EventBus:Fire("DF_ADDON_LOADED")
+    Init->>Init: ErrorHandler.Init() (hook seterrorhandler)
+    Init->>Init: EventBus.Fire(DF_ADDON_LOADED)
 
     Note over Init: Addon is ready. No UI created yet.
 
     WoW->>Init: User types /devforge
-    Init->>MW: DF:CreateMainWindow()
+    Init->>MW: DF.CreateMainWindow()
     MW->>MW: Create HIGH frame, title bar, activity bar, sidebar, bottom panel
-    MW->>MS: ModuleSystem:Activate("Console")
+    MW->>MS: ModuleSystem.Activate(Console)
 
-    MS->>Mod: factory() -- first-time creation
+    MS->>Mod: factory() first-time creation
     Mod->>Mod: Create frames, wire widgets
     MS->>Mod: OnFirstActivate()
     MS->>Mod: OnActivate()
-    MS->>Init: EventBus:Fire("MODULE_ACTIVATED")
+    MS->>Init: EventBus.Fire(MODULE_ACTIVATED)
 ```
 
 ---
@@ -145,12 +145,12 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Registered: ModuleSystem:Register(name, factory, tabLabel)
-    Registered --> Creating: First tab click / DF:Show(name)
-    Creating --> Active: factory() returns instance
-    Active --> Active: OnActivate() on each tab switch in
-    Active --> Inactive: OnDeactivate() on tab switch away
-    Inactive --> Active: OnActivate() on return
+    [*] --> Registered : ModuleSystem.Register(name, factory, tabLabel)
+    Registered --> Creating : First tab click / DF.Show(name)
+    Creating --> Active : factory() returns instance
+    Active --> Active : OnActivate() on each tab switch in
+    Active --> Inactive : OnDeactivate() on tab switch away
+    Inactive --> Active : OnActivate() on return
 
     note right of Registered
         Factory function stored.

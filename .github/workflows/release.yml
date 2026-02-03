@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "r*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#r}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify addon folder exists
+        run: |
+          test -d "DevForge" || (echo "Expected ./DevForge addon folder not found" && exit 1)
+          test -f "DevForge/DevForge.toc" || (echo "Expected DevForge/DevForge.toc not found" && exit 1)
+
+      - name: Build zip (Retail)
+        run: |
+          mkdir -p dist
+          (cd DevForge && zip -r "../dist/DevForge-${{ steps.ver.outputs.tag }}.zip" . \
+            -x "*.psd" "*.xcf" "*.blend" \
+            -x "*.kra" "*.aseprite" \
+            -x "*.zip" "*.7z" "*.rar" \
+            -x "**/.DS_Store" "**/Thumbs.db")
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: DevForge ${{ steps.ver.outputs.tag }}
+          tag_name: ${{ steps.ver.outputs.tag }}
+          files: |
+            dist/DevForge-${{ steps.ver.outputs.tag }}.zip
+          generate_release_notes: true

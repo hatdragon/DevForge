@@ -1,0 +1,127 @@
+## Interface: 120000
+## Title: DevForge
+## Notes: In-game Lua IDE - Console, Inspector, API Browser, Editor, Events, Errors, Performance, Macros, Textures
+## Author: DevForge
+## Version: 1.0.0
+## SavedVariables: DevForgeDB
+## IconTexture: Interface\Icons\INV_Gizmo_02
+## Category: Development Tools
+## Category-deDE: Entwicklungstools
+## Category-esES: Herramientas de Desarrollo
+## Category-esMX: Herramientas de Desarrollo
+## Category-frFR: Outils de Développement
+## Category-itIT: Strumenti di sviluppo
+## Category-koKR: Development Tools
+## Category-ptBR: Ferramentas de Desenvolvimento
+## Category-ruRU: Инструменты разработки
+## Category-zhCN: 开发工具
+## Category-zhTW: 開發工具
+## X-Category: Development Tools
+
+# Libraries
+Libs\LibStub\LibStub.lua
+Libs\LibDeflate\LibDeflate.lua
+Libs\LibSerialize\LibSerialize.lua
+
+# Core
+Core\Constants.lua
+Core\Init.lua
+Core\SecretGuard.lua
+Core\Util.lua
+Core\EventBus.lua
+Core\ModuleSystem.lua
+
+# SavedVariables
+SavedVariables\Schema.lua
+
+# UI Framework
+UI\Theme.lua
+UI\Widgets\Button.lua
+UI\Widgets\ScrollPane.lua
+UI\Widgets\SearchBox.lua
+UI\Widgets\CodeEditBox.lua
+UI\Widgets\TreeView.lua
+UI\Widgets\PropertyGrid.lua
+UI\Widgets\SplitPane.lua
+UI\Widgets\DropDown.lua
+UI\Widgets\CopyDialog.lua
+UI\ActivityBar.lua
+UI\Sidebar.lua
+UI\BottomPanel.lua
+UI\MainWindow.lua
+
+# Cross-module Integration
+Core\IntegrationBus.lua
+
+# Error Handler Module
+Modules\ErrorHandler\ErrorHandler.lua
+Modules\ErrorHandler\ErrorList.lua
+Modules\ErrorHandler\ErrorDetail.lua
+Modules\ErrorHandler\ErrorMonitor.lua
+
+# Console Module
+Modules\Console\ConsoleHistory.lua
+Modules\Console\ConsoleExec.lua
+Modules\Console\ConsoleOutput.lua
+Modules\Console\ConsoleInput.lua
+Modules\Console\Console.lua
+
+# Inspector Module
+Modules\Inspector\InspectorHighlight.lua
+Modules\Inspector\InspectorPicker.lua
+Modules\Inspector\InspectorTree.lua
+Modules\Inspector\InspectorProps.lua
+Modules\Inspector\InspectorGrid.lua
+Modules\Inspector\Inspector.lua
+
+# API Browser Module
+Modules\APIBrowser\APIBrowserData.lua
+Modules\APIBrowser\APIBrowserSearch.lua
+Modules\APIBrowser\APIBrowserList.lua
+Modules\APIBrowser\APIBrowserDetail.lua
+Modules\APIBrowser\APIBrowser.lua
+
+# Table Viewer Module
+Modules\TableViewer\TableDump.lua
+Modules\TableViewer\TableViewer.lua
+
+# CVar Viewer Module
+Modules\CVarViewer\CVarData.lua
+Modules\CVarViewer\CVarViewer.lua
+
+# Snippet Editor Module
+Modules\SnippetEditor\SnippetStore.lua
+Modules\SnippetEditor\SnippetList.lua
+Modules\SnippetEditor\TemplateData.lua
+Modules\SnippetEditor\TemplateBrowser.lua
+Modules\SnippetEditor\FrameBuilder.lua
+Modules\SnippetEditor\AddonScaffold.lua
+Modules\SnippetEditor\SnippetEditor.lua
+
+# WA Importer Module
+Modules\WAImporter\WADecode.lua
+Modules\WAImporter\WACodeGen.lua
+Modules\WAImporter\WAImporter.lua
+
+# Event Monitor Module
+Modules\EventMonitor\EventMonitorLog.lua
+Modules\EventMonitor\EventIndex.lua
+Modules\EventMonitor\EventMonitorFilter.lua
+Modules\EventMonitor\EventMonitor.lua
+
+# Performance Module
+Modules\Performance\PerfData.lua
+Modules\Performance\PerfTable.lua
+Modules\Performance\PerfMonitor.lua
+
+# Macro Editor Module
+Modules\MacroEditor\MacroStore.lua
+Modules\MacroEditor\MacroList.lua
+Modules\MacroEditor\MacroEditor.lua
+
+# Texture Browser Module
+Modules\TextureBrowser\TextureAtlasData.lua
+Modules\TextureBrowser\TextureIconData.lua
+Modules\TextureBrowser\TextureRuntime.lua
+Modules\TextureBrowser\TextureIndex.lua
+Modules\TextureBrowser\TextureBrowser.lua

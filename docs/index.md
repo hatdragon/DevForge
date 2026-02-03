@@ -66,6 +66,47 @@ It also includes optional tooling designed to help bridge existing workflows as 
 
 ---
 
+## Feature Overview
+
+DevForge is composed of a set of focused tools that can be used independently or together during addon development and debugging.
+
+Each feature is documented individually with screenshots and usage notes.
+
+### Core Tooling
+- **[Interactive Lua Console](features/console.md)**  
+  Execute Lua snippets, inspect runtime state, and experiment safely in-game.
+
+- **[Code Editor & Project Tools](features/editor.md)**  
+  Manage snippets and templates, scaffold addon projects, and import WeakAura logic (Retail).
+
+- **[Frame Inspector](features/inspector.md)**  
+  Inspect live UI frames, geometry, anchors, events, and scripts in real time.
+
+- **[API Browser](features/api-browser.md)**  
+  Explore available APIs and namespaces based on the active client environment.
+
+### Runtime Observation
+- **[Event Monitor](features/event-monitor.md)**  
+  Observe live events, inspect payloads, and filter noisy event streams.
+
+- **[Table Viewer](features/tables.md)**  
+  Explore Lua tables, SavedVariables, globals, and runtime state interactively.
+
+- **[Error Review Panel](features/errors.md)**  
+  Review captured Lua errors with stack traces and local variable inspection.
+
+### System & Diagnostics
+- **[CVar Viewer & Maintenance](features/cvars.md)**  
+  Inspect and manage client configuration variables safely.
+
+- **[Macro Editor & Validation](features/macros.md)**  
+  View, edit, validate, and test account and character macros.
+
+- **[Performance Monitor](features/performance.md)**  
+  Inspect addon memory usage and optional CPU sampling over time.
+
+---
+
 ## Client Support
 
 - **Retail:** Fully supported

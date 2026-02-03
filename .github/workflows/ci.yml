@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify addon folder exists
+        run: |
+          test -d "DevForge" || (echo "Expected ./DevForge addon folder not found" && exit 1)
+          test -f "DevForge/DevForge.toc" || (echo "Expected DevForge/DevForge.toc not found" && exit 1)
+      
+      - name: Verify minimal docs exist
+        run: |
+          test -d "docs" || (echo "Missing docs/ directory" && exit 1)
+          test -f "docs/index.md" || (echo "Missing docs/index.md" && exit 1)
+
+      - name: Build test zip (no publish)
+        run: |
+          mkdir -p dist
+          zip -r "dist/DevForge-test.zip" "DevForge" \
+            -x "*.psd" "*.xcf" "*.blend" \
+            -x "*.kra" "*.aseprite" \
+            -x "*.zip" "*.7z" "*.rar" \
+            -x "**/.DS_Store" "**/Thumbs.db"
+
+      - name: Verify zip structure
+        run: |
+          unzip -l dist/DevForge-test.zip | grep -q "^ *.* DevForge/DevForge.toc$" \
+            || (echo "Zip missing DevForge/DevForge.toc" && exit 1)

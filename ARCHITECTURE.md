@@ -496,7 +496,7 @@ flowchart LR
     LIST -->|click| SAVE
     LIST -->|click| UI
     RUN --> SAVE
-    RUN -->|ConsoleExec:Execute()| OUTPUT
+    RUN -->|ConsoleExec.Execute| OUTPUT
     CREATE --> LIST
     DELETE --> LIST
     DUP --> LIST

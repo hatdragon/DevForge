@@ -61,3 +61,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
+
+      - name: Dump .release contents (always)
+        if: always()
+        run: |
+          echo "=== .release listing ==="
+          ls -la .release || true
+          echo "=== tree ==="
+          find .release -maxdepth 6 -print || true

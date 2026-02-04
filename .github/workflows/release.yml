@@ -53,20 +53,12 @@ jobs:
           files: |
             dist/DevForge-${{ steps.ver.outputs.tag }}.zip
           generate_release_notes: true
-
-      - name: Debug repo layout
-        run: |
-          echo "Top-level:"
-          ls -la
-          echo ""
-          echo "Find TOC files (case-insensitive):"
-          find . -maxdepth 5 -type f \( -iname "*.toc" -o -iname "*.TOC" \) -print
-          echo ""
-          echo "DevForge folder:"
-          ls -la DevForge || true
-
+      
       - name: Package and publish
         uses: BigWigsMods/packager@v2
+        with:
+          args: -t DevForge
+          pandoc: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CF_API_KEY: ${{ secrets.CF_API_KEY }}

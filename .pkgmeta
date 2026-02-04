@@ -1,11 +1,12 @@
 package-as: DevForge
 
+move-folders:
+  DevForge: DevForge
+
 ignore:
   - docs/**
   - .github/**
-  - README.md
-  - ARCHITECTURE.md
-  - LICENSE
+  - dist/**
   - tools/**
   - "*.psd"
   - "*.xcf"

@@ -51,3 +51,9 @@ jobs:
           files: |
             dist/DevForge-${{ steps.ver.outputs.tag }}.zip
           generate_release_notes: true
+
+      - name: Package and publish
+        uses: BigWigsMods/packager@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}

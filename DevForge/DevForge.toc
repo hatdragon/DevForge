@@ -1,10 +1,13 @@
 ## Interface: 120000
 ## Title: DevForge
-## Notes: In-game Lua IDE - Console, Inspector, API Browser, Editor, Events, Errors, Performance, Macros, Textures
-## Author: DevForge
-## Version: 1.0.0
+## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, performance
+## Author: hatdragon
+## Contributors: 
+## Version: r1.0.1
+
 ## SavedVariables: DevForgeDB
 ## IconTexture: Interface\Icons\INV_Gizmo_02
+
 ## Category: Development Tools
 ## Category-deDE: Entwicklungstools
 ## Category-esES: Herramientas de Desarrollo
@@ -17,6 +20,11 @@
 ## Category-zhCN: 开发工具
 ## Category-zhTW: 開發工具
 ## X-Category: Development Tools
+
+## X-Curse-Project-ID: 1453381
+## X-Wago-ID: BKpgXv6E
+## X-Website: https://hatdragon.github.io/DevForge/
+## X-Source: https://github.com/hatdragon/DevForge
 
 # Libraries
 Libs\LibStub\LibStub.lua

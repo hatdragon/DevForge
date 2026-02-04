@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+          
       - name: Determine version from tag
         id: ver
         run: |
@@ -53,7 +53,7 @@ jobs:
           files: |
             dist/DevForge-${{ steps.ver.outputs.tag }}.zip
           generate_release_notes: true
-      
+
       - name: Package and publish
         uses: BigWigsMods/packager@v2
         with:

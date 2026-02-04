@@ -1,0 +1,20 @@
+package-as: DevForge
+
+ignore:
+  - docs/**
+  - .github/**
+  - README.md
+  - ARCHITECTURE.md
+  - CHANGELOG.md
+  - LICENSE
+  - tools/**
+  - "*.psd"
+  - "*.xcf"
+  - "*.blend"
+  - "*.kra"
+  - "*.aseprite"
+
+manual-changelog: CHANGELOG.md
+
+with:
+  fetch-depth: 0

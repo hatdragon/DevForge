@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Determine version from tag
         id: ver
@@ -51,6 +53,17 @@ jobs:
           files: |
             dist/DevForge-${{ steps.ver.outputs.tag }}.zip
           generate_release_notes: true
+
+      - name: Debug repo layout
+        run: |
+          echo "Top-level:"
+          ls -la
+          echo ""
+          echo "Find TOC files (case-insensitive):"
+          find . -maxdepth 5 -type f \( -iname "*.toc" -o -iname "*.TOC" \) -print
+          echo ""
+          echo "DevForge folder:"
+          ls -la DevForge || true
 
       - name: Package and publish
         uses: BigWigsMods/packager@v2

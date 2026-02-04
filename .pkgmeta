@@ -3,6 +3,9 @@ package-as: DevForge
 move-folders:
   DevForge: DevForge
 
+release:
+  - DevForge/**
+
 ignore:
   - docs/**
   - .github/**

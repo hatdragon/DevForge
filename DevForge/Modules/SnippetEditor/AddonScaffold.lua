@@ -110,7 +110,7 @@ local function GenerateTOC(state)
     local function add(s) lines[#lines + 1] = s end
 
     local name = state.addonName ~= "" and state.addonName or "MyAddon"
-    add("## Interface: 120000")
+    add("## Interface: 120000, 120001")
     add("## Title: " .. name)
     add("## Notes: " .. (state.description ~= "" and state.description or name))
     add("## Author: " .. (state.author ~= "" and state.author or "Unknown"))

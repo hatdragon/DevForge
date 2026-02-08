@@ -268,7 +268,7 @@ local function GenerateTOC(projectName)
     local lines = {}
     local function add(s) lines[#lines + 1] = s end
 
-    add("## Interface: 120000")
+    add("## Interface: 120000, 120001")
     add("## Title: " .. projectName)
     add("## Notes: Generated from WeakAuras import")
     add("## Author: DevForge WAImporter")

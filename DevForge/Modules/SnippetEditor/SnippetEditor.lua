@@ -9,6 +9,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     local editor = {}
     local currentSnippetId = nil
+    local ranProjects = {}  -- [projectId] = true for projects that have been run
 
     ---------------------------------------------------------------------------
     -- Sidebar: toggle bar + snippet list + template browser
@@ -75,7 +76,79 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     snippetsContainer:SetPoint("BOTTOMRIGHT", 0, 0)
 
     local snippetList = DF.SnippetList:Create(snippetsContainer)
-    snippetList.frame:SetAllPoints(snippetsContainer)
+    snippetList.frame:SetPoint("TOPLEFT", snippetsContainer, "TOPLEFT", 0, 0)
+    snippetList.frame:SetPoint("BOTTOMRIGHT", snippetsContainer, "BOTTOMRIGHT", 0, 0)
+
+    -- Running-projects panel (bottom of sidebar, hidden until first run)
+    local runPanel = CreateFrame("Frame", nil, snippetsContainer, "BackdropTemplate")
+    runPanel:SetPoint("BOTTOMLEFT", 0, 0)
+    runPanel:SetPoint("BOTTOMRIGHT", 0, 0)
+    runPanel:Hide()
+    local runPanelBg = runPanel:CreateTexture(nil, "BACKGROUND")
+    runPanelBg:SetAllPoints()
+    runPanelBg:SetColorTexture(0.15, 0.15, 0.18, 1)
+
+    local runPanelSep = runPanel:CreateTexture(nil, "OVERLAY")
+    runPanelSep:SetHeight(1)
+    runPanelSep:SetPoint("TOPLEFT", 0, 0)
+    runPanelSep:SetPoint("TOPRIGHT", 0, 0)
+    runPanelSep:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
+    local runPanelHeader = runPanel:CreateFontString(nil, "OVERLAY")
+    runPanelHeader:SetFontObject(DF.Theme:UIFont())
+    runPanelHeader:SetPoint("TOPLEFT", 6, -5)
+    runPanelHeader:SetTextColor(0.9, 0.75, 0.3, 1)
+    runPanelHeader:SetText("Running")
+
+    local runPanelRows = {}
+
+    local runPanelReload = DF.Widgets:CreateButton(runPanel, "Reload UI", 65)
+    runPanelReload:SetPoint("BOTTOMLEFT", 6, 6)
+    runPanelReload:SetScript("OnClick", function() ReloadUI() end)
+
+    local function RefreshRunPanel()
+        -- Collect running project names
+        local entries = {}
+        for projectId in pairs(ranProjects) do
+            local proj = DF.SnippetStore:Get(projectId)
+            if proj then
+                entries[#entries + 1] = proj.name or "Untitled"
+            end
+        end
+        table.sort(entries)
+
+        if #entries == 0 then
+            runPanel:Hide()
+            snippetList.frame:SetPoint("BOTTOMRIGHT", snippetsContainer, "BOTTOMRIGHT", 0, 0)
+            return
+        end
+
+        -- Create/update row labels
+        for i, name in ipairs(entries) do
+            if not runPanelRows[i] then
+                local row = runPanel:CreateFontString(nil, "OVERLAY")
+                row:SetFontObject(DF.Theme:UIFont())
+                row:SetJustifyH("LEFT")
+                row:SetTextColor(0.7, 0.7, 0.7, 1)
+                runPanelRows[i] = row
+            end
+            runPanelRows[i]:SetText("  " .. name)
+            runPanelRows[i]:ClearAllPoints()
+            runPanelRows[i]:SetPoint("TOPLEFT", 6, -5 - (i * 16))
+            runPanelRows[i]:SetPoint("RIGHT", -6, 0)
+            runPanelRows[i]:Show()
+        end
+        -- Hide extra rows
+        for i = #entries + 1, #runPanelRows do
+            runPanelRows[i]:Hide()
+        end
+
+        -- header + rows + button + padding
+        local panelHeight = 10 + (#entries + 1) * 16 + 28
+        runPanel:SetHeight(panelHeight)
+        runPanel:Show()
+        snippetList.frame:SetPoint("BOTTOMRIGHT", snippetsContainer, "BOTTOMRIGHT", 0, panelHeight)
+    end
 
     -- Templates container
     local templatesContainer = CreateFrame("Frame", nil, sidebarFrame)
@@ -158,11 +231,42 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     emptyState:SetText("Create a snippet to get started.")
     emptyState:SetTextColor(0.5, 0.5, 0.5, 1)
 
+    -- Run-project warning banner
+    local runBanner = CreateFrame("Frame", nil, editorFrame, "BackdropTemplate")
+    runBanner:SetHeight(20)
+    runBanner:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
+    runBanner:SetPoint("TOPRIGHT", toolbar, "BOTTOMRIGHT", 0, -2)
+    runBanner:Hide()
+    local runBannerBg = runBanner:CreateTexture(nil, "BACKGROUND")
+    runBannerBg:SetAllPoints()
+    runBannerBg:SetColorTexture(0.35, 0.25, 0.05, 0.6)
+    local runBannerReload = DF.Widgets:CreateButton(runBanner, "Reload UI", 65)
+    runBannerReload:SetPoint("RIGHT", -4, 0)
+    runBannerReload:SetScript("OnClick", function() ReloadUI() end)
+
+    local runBannerText = runBanner:CreateFontString(nil, "OVERLAY")
+    runBannerText:SetFontObject(DF.Theme:UIFont())
+    runBannerText:SetPoint("LEFT", 6, 0)
+    runBannerText:SetPoint("RIGHT", runBannerReload, "LEFT", -6, 0)
+    runBannerText:SetJustifyH("LEFT")
+    runBannerText:SetTextColor(0.9, 0.75, 0.3, 1)
+    runBannerText:SetText("Re-running won't unload previous frames or state.")
+
     -- Editor content (hidden when no snippet selected)
     local editorContent = CreateFrame("Frame", nil, editorFrame)
-    editorContent:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
     editorContent:SetPoint("BOTTOMRIGHT", 0, 0)
     editorContent:Hide()
+
+    local function UpdateEditorContentAnchor()
+        editorContent:ClearAllPoints()
+        if runBanner:IsShown() then
+            editorContent:SetPoint("TOPLEFT", runBanner, "BOTTOMLEFT", 0, -2)
+        else
+            editorContent:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
+        end
+        editorContent:SetPoint("BOTTOMRIGHT", 0, 0)
+    end
+    UpdateEditorContentAnchor()
 
     -- Name input row
     local nameRow = CreateFrame("Frame", nil, editorContent)
@@ -209,6 +313,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     local function LoadSnippet(id)
         if not id then
+            runBanner:Hide()
+            UpdateEditorContentAnchor()
             editorContent:Hide()
             emptyState:Show()
             currentSnippetId = nil
@@ -217,11 +323,22 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
         local snippet = DF.SnippetStore:Get(id)
         if not snippet then
+            runBanner:Hide()
+            UpdateEditorContentAnchor()
             editorContent:Hide()
             emptyState:Show()
             currentSnippetId = nil
             return
         end
+
+        -- Show banner if this snippet belongs to any previously-run project
+        local snippetProjectId = snippet.isProject and snippet.id or snippet.parentId
+        if snippetProjectId and ranProjects[snippetProjectId] then
+            runBanner:Show()
+        else
+            runBanner:Hide()
+        end
+        UpdateEditorContentAnchor()
 
         emptyState:Hide()
         editorContent:Show()
@@ -285,13 +402,6 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     ---------------------------------------------------------------------------
     -- Toolbar button handlers
     ---------------------------------------------------------------------------
-    snippetList:SetOnSelect(function(id)
-        SaveCurrent()
-        LoadSnippet(id)
-    end)
-
-    local newMenu = DF.Widgets:CreateDropDown()
-
     local function CreateNew(parentId)
         SaveCurrent()
         local snippet = DF.SnippetStore:Create("Untitled", parentId)
@@ -299,6 +409,123 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         LoadSnippet(snippet.id)
         nameInput:SetFocus()
         nameInput:HighlightText()
+    end
+
+    snippetList:SetOnSelect(function(id)
+        SaveCurrent()
+        LoadSnippet(id)
+    end)
+
+    local contextMenu = DF.Widgets:CreateDropDown()
+
+    snippetList:SetOnRightClick(function(snippetId, isProjectRow)
+        local snippet = DF.SnippetStore:Get(snippetId)
+        if not snippet then return end
+
+        local items = {}
+        if snippet.isProject then
+            items[#items + 1] = {
+                text = "New file in " .. (snippet.name or "project"),
+                func = function()
+                    snippetList:SetExpanded(snippetId, true)
+                    CreateNew(snippetId)
+                end,
+            }
+            local childCount = #DF.SnippetStore:GetChildren(snippetId)
+            local label = "Delete project"
+            if childCount > 0 then
+                label = label .. " (" .. childCount .. " files)"
+            end
+            items[#items + 1] = {
+                text = label,
+                func = function()
+                    DF.SnippetStore:Delete(snippetId)
+                    if currentSnippetId then
+                        local cur = DF.SnippetStore:Get(currentSnippetId)
+                        if not cur then
+                            currentSnippetId = nil
+                            SelectNext()
+                        end
+                    end
+                    snippetList:Refresh()
+                end,
+            }
+        else
+            items[#items + 1] = {
+                text = "Delete snippet",
+                func = function()
+                    if currentSnippetId == snippetId then
+                        currentSnippetId = nil
+                    end
+                    DF.SnippetStore:Delete(snippetId)
+                    snippetList:Refresh()
+                    if not currentSnippetId then
+                        SelectNext()
+                    end
+                end,
+            }
+        end
+
+        contextMenu:Show(nil, items)
+    end)
+
+    local newMenu = DF.Widgets:CreateDropDown()
+
+    -- Lightweight project-name prompt (avoids StaticPopup quirks)
+    local projectPrompt = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    projectPrompt:SetFrameStrata("FULLSCREEN_DIALOG")
+    projectPrompt:SetSize(280, 80)
+    projectPrompt:SetPoint("CENTER")
+    projectPrompt:SetClampedToScreen(true)
+    projectPrompt:EnableMouse(true)
+    projectPrompt:Hide()
+    DF.Theme:ApplyDialogChrome(projectPrompt)
+
+    local ppLabel = projectPrompt:CreateFontString(nil, "OVERLAY")
+    ppLabel:SetFontObject(DF.Theme:UIFont())
+    ppLabel:SetPoint("TOPLEFT", 10, -10)
+    ppLabel:SetText("Project name:")
+    ppLabel:SetTextColor(0.65, 0.65, 0.65, 1)
+
+    local ppInput = CreateFrame("EditBox", nil, projectPrompt, "BackdropTemplate")
+    ppInput:SetPoint("TOPLEFT", 10, -28)
+    ppInput:SetPoint("RIGHT", -10, 0)
+    ppInput:SetHeight(22)
+    ppInput:SetAutoFocus(false)
+    ppInput:SetFontObject(DF.Theme:UIFont())
+    ppInput:SetTextColor(0.83, 0.83, 0.83, 1)
+    ppInput:SetMaxLetters(100)
+    DF.Theme:ApplyInputStyle(ppInput)
+
+    local ppCreate = DF.Widgets:CreateButton(projectPrompt, "Create", 60)
+    ppCreate:SetPoint("BOTTOMRIGHT", -10, 8)
+
+    local ppCancel = DF.Widgets:CreateButton(projectPrompt, "Cancel", 60)
+    ppCancel:SetPoint("RIGHT", ppCreate, "LEFT", -4, 0)
+
+    local function FinishProjectPrompt()
+        local name = ppInput:GetText()
+        if not name or name == "" then name = "Untitled Project" end
+        projectPrompt:Hide()
+        SaveCurrent()
+        local project = DF.SnippetStore:CreateProject(name)
+        snippetList:Refresh()
+        snippetList:SetExpanded(project.id, true)
+    end
+
+    ppCreate:SetScript("OnClick", FinishProjectPrompt)
+    ppCancel:SetScript("OnClick", function() projectPrompt:Hide() end)
+    ppInput:SetScript("OnEnterPressed", FinishProjectPrompt)
+    ppInput:SetScript("OnEscapePressed", function() projectPrompt:Hide() end)
+
+    projectPrompt:SetScript("OnShow", function()
+        ppInput:SetText("Untitled Project")
+        ppInput:HighlightText()
+        ppInput:SetFocus()
+    end)
+
+    local function CreateNewProject()
+        projectPrompt:Show()
     end
 
     newBtn:SetScript("OnClick", function(self)
@@ -320,15 +547,16 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             end
         end
 
-        if not projectId then
-            CreateNew(nil)
-            return
+        local items = {}
+        if projectId then
+            items[#items + 1] = { text = "New in " .. projectName, func = function() CreateNew(projectId) end }
+            items[#items + 1] = { text = "New standalone snippet", func = function() CreateNew(nil) end }
+        else
+            items[#items + 1] = { text = "New snippet", func = function() CreateNew(nil) end }
         end
+        items[#items + 1] = { text = "New empty project", func = CreateNewProject }
 
-        newMenu:Show(self, {
-            { text = "New in " .. projectName, func = function() CreateNew(projectId) end },
-            { text = "New standalone snippet", func = function() CreateNew(nil) end },
-        })
+        newMenu:Show(self, items)
     end)
 
     dupBtn:SetScript("OnClick", function()
@@ -409,6 +637,13 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         if not currentSnippetId then return end
         if not DF.ConsoleExec then return end
         SaveCurrent()
+
+        -- Ensure bottom panel is visible and on the Output tab
+        local bp = DF.bottomPanel
+        if bp then
+            if bp.collapsed then bp:Expand() end
+            bp:SelectTab("output")
+        end
 
         -- Determine project context
         local snippet = DF.SnippetStore:Get(currentSnippetId)
@@ -588,6 +823,11 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             color = DF.Colors.func,
         })
         DF.EventBus:Fire("DF_OUTPUT_LINE", { text = "" })
+
+        ranProjects[project.id] = true
+        runBanner:Show()
+        UpdateEditorContentAnchor()
+        RefreshRunPanel()
     end)
 
     saveBtn:SetScript("OnClick", function()
@@ -602,7 +842,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         end
     end)
 
-    runBtn:SetScript("OnClick", function()
+    runBtn:SetScript("OnClick", function(_, _, down)
+        if down then return end -- ignore mouse-down, fire only on mouse-up
         if not currentSnippetId then return end
         SaveCurrent()
         if codeEditor.PushUndo then codeEditor:PushUndo() end
@@ -610,10 +851,10 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         local code = codeEditor:GetText()
         if not code or code == "" then return end
 
-        if not DF.ConsoleExec then return end
-
-        -- Execute and send output to bottom panel
-        DF.EventBus:Fire("DF_EXECUTE_CODE", { code = code, source = "SnippetEditor" })
+        DF.EventBus:Fire("DF_EXECUTE_CODE", {
+            code = code,
+            source = "snippet",
+        })
     end)
 
     ---------------------------------------------------------------------------

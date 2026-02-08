@@ -1,4 +1,4 @@
-## Interface: 120000
+## Interface: 120000, 120001
 ## Title: DevForge
 ## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, performance
 ## Author: hatdragon

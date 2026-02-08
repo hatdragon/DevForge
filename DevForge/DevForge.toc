@@ -3,7 +3,7 @@
 ## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, performance
 ## Author: hatdragon
 ## Contributors: 
-## Version: r1.0.1
+## Version: r1.0.9
 
 ## SavedVariables: DevForgeDB
 ## IconTexture: Interface\Icons\INV_Gizmo_02

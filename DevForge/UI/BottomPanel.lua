@@ -38,6 +38,7 @@ function BottomPanel:Create(parent)
 
     -- Collapse toggle (left side of tab bar)
     local collapseBtn = CreateFrame("Button", nil, tabBar)
+    collapseBtn:RegisterForClicks("LeftButtonUp")
     collapseBtn:SetSize(20, L.bottomTabHeight)
     collapseBtn:SetPoint("LEFT", 2, 0)
 
@@ -84,6 +85,7 @@ function BottomPanel:Create(parent)
 
     for i, def in ipairs(TAB_DEFS) do
         local btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
+        btn:RegisterForClicks("LeftButtonUp")
         btn:SetSize(tabBtnWidth, L.bottomTabHeight)
         btn:SetPoint("LEFT", tabBar, "LEFT", tabXOffset + (i - 1) * (tabBtnWidth + 2), 0)
         btn:SetBackdrop({
@@ -230,6 +232,12 @@ function BottomPanel:Create(parent)
         eventCount = 0
         panel:SetBadge("events", 0)
         eventsOutput:Clear()
+    end)
+
+    DF.EventBus:On("DF_ERRORS_CLEARED", function()
+        errorCount = 0
+        panel:SetBadge("errors", 0)
+        errorsOutput:Clear()
     end)
 
     ---------------------------------------------------------------------------

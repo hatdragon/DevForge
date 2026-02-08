@@ -28,6 +28,7 @@ function DF.Widgets:CreateSearchBox(parent, placeholder, height)
 
     -- Clear button
     local clearBtn = CreateFrame("Button", nil, frame)
+    clearBtn:RegisterForClicks("LeftButtonUp")
     clearBtn:SetSize(14, 14)
     clearBtn:SetPoint("RIGHT", -4, 0)
     clearBtn:Hide()

@@ -62,6 +62,7 @@ function ActivityBar:Create(parent)
         lastGroup = def.group
 
         local btn = CreateFrame("Button", nil, frame)
+        btn:RegisterForClicks("LeftButtonUp")
         btn:SetSize(L.activityBarWidth, L.activityBtnHeight)
         btn:SetPoint("TOPLEFT", 0, yOffset)
 

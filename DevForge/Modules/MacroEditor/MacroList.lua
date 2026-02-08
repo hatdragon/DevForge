@@ -25,6 +25,7 @@ function MacList:Create(parent)
         end
 
         local row = CreateFrame("Button", nil, self.pane:GetContent())
+        row:RegisterForClicks("LeftButtonUp")
         row:SetHeight(ROW_HEIGHT)
 
         -- Selection highlight

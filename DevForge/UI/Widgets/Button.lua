@@ -7,6 +7,7 @@ function DF.Widgets:CreateButton(parent, text, width, height)
     height = height or DF.Layout.buttonHeight
 
     local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    btn:RegisterForClicks("LeftButtonUp")
     btn:SetSize(width, height)
     btn:SetBackdrop({
         bgFile = "Interface\\ChatFrame\\ChatFrameBackground",

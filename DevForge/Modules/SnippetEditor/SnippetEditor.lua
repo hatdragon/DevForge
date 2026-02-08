@@ -27,6 +27,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     local function CreateToggleButton(parent, text, width)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:RegisterForClicks("LeftButtonUp")
         btn:SetSize(width, 20)
         btn:SetBackdrop({
             bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -692,17 +693,42 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         local addonName = project.name
         local filesRun, filesErrored = 0, 0
 
+        -- Memory baseline for Perf tracking
+        collectgarbage("collect")
+        local memBefore = collectgarbage("count")
+        local cpuAccum = 0   -- microseconds accumulated by wrapped frame scripts
+        local trackedFrames = {}
+
+        -- Unregister previous virtual entry if re-running
+        local debugKey = "debug:" .. project.id
+        if ranProjects[project.id] then
+            DF.PerfData:UnregisterVirtual(debugKey)
+        end
+
         -- Track frames that register for lifecycle events during execution
-        -- so we can simulate them after all files are loaded
+        -- so we can simulate them after all files are loaded.
+        -- IMPORTANT: The CreateFrame wrapper stays active during event simulation
+        -- so that frames created by event handlers (e.g. ns.Init() called from PEW)
+        -- also get their lifecycle events tracked and fired in subsequent passes.
         local addonLoadedFrames = {}
+        local playerLoginFrames = {}
         local enteringWorldFrames = {}
         local realCreateFrame = CreateFrame
+        local frameSeen = {} -- prevent duplicate tracking
         CreateFrame = function(frameType, ...)
             local frame = realCreateFrame(frameType, ...)
+            trackedFrames[#trackedFrames + 1] = frame
             local realRegisterEvent = frame.RegisterEvent
             frame.RegisterEvent = function(self, event, ...)
+                local key = tostring(self) .. event
+                if frameSeen[key] then
+                    return realRegisterEvent(self, event, ...)
+                end
+                frameSeen[key] = true
                 if event == "ADDON_LOADED" then
                     addonLoadedFrames[#addonLoadedFrames + 1] = self
+                elseif event == "PLAYER_LOGIN" then
+                    playerLoginFrames[#playerLoginFrames + 1] = self
                 elseif event == "PLAYER_ENTERING_WORLD" then
                     enteringWorldFrames[#enteringWorldFrames + 1] = self
                 end
@@ -739,79 +765,104 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             end
         end
 
-        -- Restore CreateFrame before firing events
+        -- Simulate lifecycle events with cascading: handlers may create new frames
+        -- that register for later events. We loop until no new frames appear.
+        -- WoW order: ADDON_LOADED → PLAYER_LOGIN → PLAYER_ENTERING_WORLD
+        local processedAL, processedLogin, processedPEW = 0, 0, 0
+        local maxPasses = 5
+
+        -- Helper: fire an event on unprocessed frames, capture print output
+        local function FireEvent(eventName, frames, processed, ...)
+            if processed >= #frames then return processed end
+
+            DF.EventBus:Fire("DF_OUTPUT_LINE", {
+                text = "-- Firing " .. eventName,
+                color = DF.Colors.comment,
+            })
+
+            local prints = {}
+            local origPrint = print
+            print = function(...)
+                local parts = {}
+                for i = 1, select("#", ...) do
+                    parts[i] = tostring(select(i, ...))
+                end
+                prints[#prints + 1] = table.concat(parts, "    ")
+            end
+
+            local eventArgs = { ... }
+            local nArgs = select("#", ...)
+            while processed < #frames do
+                processed = processed + 1
+                local frame = frames[processed]
+                local handler = frame:GetScript("OnEvent")
+                if handler then
+                    local ok, err = pcall(handler, frame, eventName, unpack(eventArgs, 1, nArgs))
+                    if not ok then
+                        prints[#prints + 1] = DF.Colors.error .. tostring(err) .. "|r"
+                        filesErrored = filesErrored + 1
+                    end
+                end
+            end
+
+            print = origPrint
+
+            for _, line in ipairs(prints) do
+                DF.EventBus:Fire("DF_OUTPUT_LINE", { text = DF.Colors.text .. line .. "|r" })
+            end
+
+            return processed
+        end
+
+        for pass = 1, maxPasses do
+            local alBefore = #addonLoadedFrames
+            local loginBefore = #playerLoginFrames
+            local pewBefore = #enteringWorldFrames
+
+            processedAL = FireEvent("ADDON_LOADED", addonLoadedFrames, processedAL, addonName)
+            processedLogin = FireEvent("PLAYER_LOGIN", playerLoginFrames, processedLogin)
+            processedPEW = FireEvent("PLAYER_ENTERING_WORLD", enteringWorldFrames, processedPEW, true, false)
+
+            -- If no new frames were added during this pass, we're done
+            local hadNew = (#addonLoadedFrames > alBefore)
+                or (#playerLoginFrames > loginBefore)
+                or (#enteringWorldFrames > pewBefore)
+            if not hadNew then break end
+        end
+
+        -- Restore CreateFrame AFTER all simulation is complete
         CreateFrame = realCreateFrame
 
-        -- Simulate ADDON_LOADED for frames that registered during execution
-        if #addonLoadedFrames > 0 then
-            DF.EventBus:Fire("DF_OUTPUT_LINE", {
-                text = "-- Firing ADDON_LOADED",
-                color = DF.Colors.comment,
-            })
+        -- Measure memory allocation and register Perf virtual entry
+        local memAfter = collectgarbage("count")
+        local memUsed = math.max(0, memAfter - memBefore)
 
-            -- Capture print output during event handlers
-            local prints = {}
-            local origPrint = print
-            print = function(...)
-                local parts = {}
-                for i = 1, select("#", ...) do
-                    parts[i] = tostring(select(i, ...))
-                end
-                prints[#prints + 1] = table.concat(parts, "    ")
+        -- Wrap OnUpdate/OnEvent on tracked frames for live CPU measurement
+        for _, frame in ipairs(trackedFrames) do
+            local origOnUpdate = frame:GetScript("OnUpdate")
+            if origOnUpdate then
+                frame:SetScript("OnUpdate", function(self, elapsed)
+                    local t0 = debugprofilestop()
+                    origOnUpdate(self, elapsed)
+                    cpuAccum = cpuAccum + (debugprofilestop() - t0)
+                end)
             end
-
-            for _, frame in ipairs(addonLoadedFrames) do
-                local handler = frame:GetScript("OnEvent")
-                if handler then
-                    local ok, err = pcall(handler, frame, "ADDON_LOADED", addonName)
-                    if not ok then
-                        prints[#prints + 1] = DF.Colors.error .. tostring(err) .. "|r"
-                        filesErrored = filesErrored + 1
-                    end
-                end
-            end
-
-            print = origPrint
-
-            for _, line in ipairs(prints) do
-                DF.EventBus:Fire("DF_OUTPUT_LINE", { text = DF.Colors.text .. line .. "|r" })
+            local origOnEvent = frame:GetScript("OnEvent")
+            if origOnEvent then
+                frame:SetScript("OnEvent", function(self, event, ...)
+                    local t0 = debugprofilestop()
+                    origOnEvent(self, event, ...)
+                    cpuAccum = cpuAccum + (debugprofilestop() - t0)
+                end)
             end
         end
 
-        -- Simulate PLAYER_ENTERING_WORLD for frames that registered during execution
-        if #enteringWorldFrames > 0 then
-            DF.EventBus:Fire("DF_OUTPUT_LINE", {
-                text = "-- Firing PLAYER_ENTERING_WORLD",
-                color = DF.Colors.comment,
-            })
-
-            local prints = {}
-            local origPrint = print
-            print = function(...)
-                local parts = {}
-                for i = 1, select("#", ...) do
-                    parts[i] = tostring(select(i, ...))
-                end
-                prints[#prints + 1] = table.concat(parts, "    ")
-            end
-
-            for _, frame in ipairs(enteringWorldFrames) do
-                local handler = frame:GetScript("OnEvent")
-                if handler then
-                    local ok, err = pcall(handler, frame, "PLAYER_ENTERING_WORLD", true, false)
-                    if not ok then
-                        prints[#prints + 1] = DF.Colors.error .. tostring(err) .. "|r"
-                        filesErrored = filesErrored + 1
-                    end
-                end
-            end
-
-            print = origPrint
-
-            for _, line in ipairs(prints) do
-                DF.EventBus:Fire("DF_OUTPUT_LINE", { text = DF.Colors.text .. line .. "|r" })
-            end
-        end
+        -- Register virtual entry in PerfData
+        local snap = DF.PerfData:RegisterVirtual(debugKey, "DEBUG: " .. project.name, function()
+            return { cpu = cpuAccum / 1000 }  -- convert μs to ms
+        end)
+        snap.memory = memUsed
+        snap.memoryPeak = memUsed
 
         -- Summary
         local summary = filesRun .. " file(s) executed"
@@ -842,8 +893,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         end
     end)
 
-    runBtn:SetScript("OnClick", function(_, _, down)
-        if down then return end -- ignore mouse-down, fire only on mouse-up
+    runBtn:SetScript("OnClick", function()
         if not currentSnippetId then return end
         SaveCurrent()
         if codeEditor.PushUndo then codeEditor:PushUndo() end

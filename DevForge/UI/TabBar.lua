@@ -38,6 +38,7 @@ function TabBar:Create(parent)
 
     function bar:CreateTab(moduleName, label, xPos)
         local tab = CreateFrame("Button", nil, self.frame, "BackdropTemplate")
+        tab:RegisterForClicks("LeftButtonUp")
         tab:SetSize(DF.Layout.tabWidth, DF.Layout.tabHeight)
         tab:SetBackdrop({
             bgFile = "Interface\\ChatFrame\\ChatFrameBackground",

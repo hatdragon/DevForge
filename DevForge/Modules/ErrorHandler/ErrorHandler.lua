@@ -109,11 +109,25 @@ local function OnBugGrabbed(_, bugObj)
     )
 end
 
+-- Correct stack data extraction (mirrors BugGrabber's GetErrorData approach)
+local function GetErrorData()
+    local currentStackHeight = GetCallstackHeight and GetCallstackHeight()
+    local errorCallStackHeight = GetErrorCallstackHeight and GetErrorCallstackHeight()
+    if currentStackHeight and errorCallStackHeight then
+        local debugStackLevel = currentStackHeight - (errorCallStackHeight - 1)
+        return debugstack(debugStackLevel), debuglocals(debugStackLevel)
+    end
+    return debugstack(3), debuglocals(3)
+end
+
 -- Self-hook error handler (used when BugGrabber is absent)
+local inHandler = false
 local function OnLuaError(message)
-    local stack = debugstack(3)
-    local locals = debuglocals(3)
+    if inHandler then return end
+    inHandler = true
+    local stack, locals = GetErrorData()
     ProcessError(message, stack, locals, "error")
+    inHandler = false
 end
 
 function Handler:Init()
@@ -147,27 +161,50 @@ function Handler:Init()
             BugGrabber.RegisterAddonActionCallback(OnBugGrabbed)
         end
     else
-        -- Self-hook using Blizzard 12.x API
+        -- Self-hook: try each approach individually with pcall so one
+        -- failure doesn't block the rest.  Blizzard_ScriptErrors may
+        -- assert when addons interact with the error-handler chain.
+        local hooked = false
         if _G.AddLuaErrorHandler then
-            AddLuaErrorHandler(OnLuaError)
-        elseif _G.seterrorhandler then
-            -- Fallback: wrap existing error handler
+            local ok = pcall(AddLuaErrorHandler, OnLuaError)
+            hooked = ok
+        end
+        if not hooked and _G.seterrorhandler then
             local oldHandler = geterrorhandler()
-            seterrorhandler(function(msg)
+            local ok = pcall(seterrorhandler, function(msg)
                 OnLuaError(msg)
                 if oldHandler then
                     return oldHandler(msg)
                 end
             end)
+            hooked = ok
         end
     end
 
-    -- Register for LUA_WARNING events
-    local warningFrame = CreateFrame("Frame")
-    warningFrame:RegisterEvent("LUA_WARNING")
-    warningFrame:SetScript("OnEvent", function(_, _, warnType, warnMessage)
-        ProcessError(warnMessage, nil, nil, "warning")
-    end)
+    -- Register for additional error-producing events
+    if not _G.BugGrabber then
+        local eventFrame = CreateFrame("Frame")
+        eventFrame:RegisterEvent("LUA_WARNING")
+        eventFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
+        eventFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+
+        local badAddons = {}
+        eventFrame:SetScript("OnEvent", function(_, event, ...)
+            if event == "LUA_WARNING" then
+                local arg1, arg2 = ...
+                local warningText = arg2 or arg1
+                ProcessError(warningText, nil, nil, "warning")
+            elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
+                local addonName, addonFunc = ...
+                local name = addonName or "<name>"
+                if not badAddons[name] then
+                    badAddons[name] = true
+                    local msg = ("[%s] AddOn '%s' tried to call the protected function '%s'."):format(event, name, addonFunc or "<func>")
+                    ProcessError(msg, nil, nil, "error")
+                end
+            end
+        end)
+    end
 end
 
 function Handler:GetErrors()

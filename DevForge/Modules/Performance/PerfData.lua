@@ -4,8 +4,9 @@ DF.PerfData = {}
 
 local PerfData = DF.PerfData
 
-local snapshots = {}   -- { name -> snapshot }
-local sortedList = {}  -- sorted array of snapshots
+local snapshots = {}          -- { name -> snapshot }
+local virtualSnapshots = {}   -- { key -> snapshot } for debug/run-project entries
+local sortedList = {}         -- sorted array of snapshots
 local ticker = nil
 local onUpdate = nil
 local pollingInterval = 2
@@ -67,12 +68,28 @@ local function DoUpdate()
         end
     end
 
-    -- Rebuild sorted list
+    -- Poll virtual entries (debug/run-project)
+    for _, snap in pairs(virtualSnapshots) do
+        if snap.pollFn then
+            local ok, data = pcall(snap.pollFn)
+            if ok and data and data.cpu then
+                local prevCpu = snap.cpu or 0
+                snap.cpu = data.cpu
+                snap.cpuDelta = data.cpu - prevCpu
+                snap.cpuPerSec = (pollingInterval > 0) and (snap.cpuDelta / pollingInterval) or 0
+            end
+        end
+    end
+
+    -- Rebuild sorted list (real + virtual)
     wipe(sortedList)
     for _, snap in pairs(snapshots) do
         if snap.loaded then
             sortedList[#sortedList + 1] = snap
         end
+    end
+    for _, snap in pairs(virtualSnapshots) do
+        sortedList[#sortedList + 1] = snap
     end
 
     if onUpdate then onUpdate() end
@@ -152,4 +169,18 @@ end
 
 function PerfData:SetOnUpdate(cb)
     onUpdate = cb
+end
+
+-- Virtual entries for debug / Run Project tracking
+function PerfData:RegisterVirtual(key, name, pollFn)
+    local snap = NewSnapshot(name)
+    snap.loaded = true
+    snap.virtual = true
+    snap.pollFn = pollFn
+    virtualSnapshots[key] = snap
+    return snap
+end
+
+function PerfData:UnregisterVirtual(key)
+    virtualSnapshots[key] = nil
 end

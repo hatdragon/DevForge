@@ -41,9 +41,6 @@ DF.ModuleSystem:Register("ErrorHandler", function(sidebarParent, editorParent)
     local pauseBtn = DF.Widgets:CreateButton(toolbar, "Pause", 60)
     pauseBtn:SetPoint("LEFT", copyBtn, "RIGHT", 4, 0)
 
-    local toConsoleBtn = DF.Widgets:CreateButton(toolbar, "To Console", 80)
-    toConsoleBtn:SetPoint("LEFT", pauseBtn, "RIGHT", 8, 0)
-
     -- Count label
     local countLabel = toolbar:CreateFontString(nil, "OVERLAY")
     countLabel:SetFontObject(DF.Theme:UIFont())
@@ -80,6 +77,7 @@ DF.ModuleSystem:Register("ErrorHandler", function(sidebarParent, editorParent)
         errorList:Refresh()
         errorDetail:Clear()
         UpdateCount()
+        DF.EventBus:Fire("DF_ERRORS_CLEARED")
     end)
 
     -- Pause/Resume button
@@ -90,24 +88,6 @@ DF.ModuleSystem:Register("ErrorHandler", function(sidebarParent, editorParent)
             pauseBtn:SetText("Resume")
         else
             pauseBtn:SetText("Pause")
-        end
-    end)
-
-    -- Copy to Console button
-    toConsoleBtn:SetScript("OnClick", function()
-        local text = errorDetail:GetText()
-        if text and text ~= "" then
-            -- Put error context into the REPL input
-            if DF.bottomPanel then
-                local input = DF.bottomPanel:GetInputLine()
-                if input then
-                    -- Extract just the error message for the input
-                    local errMsg = text:match("%[ERROR%] (.-)\n") or text:match("%[WARNING%] (.-)\n") or text:sub(1, 200)
-                    input:SetText("-- Error: " .. errMsg)
-                    input:Focus()
-                end
-                DF.bottomPanel:SelectTab("output")
-            end
         end
     end)
 

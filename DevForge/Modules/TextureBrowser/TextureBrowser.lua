@@ -54,6 +54,7 @@ DF.ModuleSystem:Register("TextureBrowser", function(sidebarParent, editorParent)
     end)
 
     local previewBlocker = CreateFrame("Button", nil, UIParent)
+    previewBlocker:RegisterForClicks("LeftButtonUp")
     previewBlocker:SetAllPoints(UIParent)
     previewBlocker:SetFrameStrata("FULLSCREEN")
     previewBlocker:Hide()
@@ -170,6 +171,7 @@ DF.ModuleSystem:Register("TextureBrowser", function(sidebarParent, editorParent)
 
     for i, def in ipairs(TAB_DEFS) do
         local btn = CreateFrame("Button", nil, tabBtnRow, "BackdropTemplate")
+        btn:RegisterForClicks("LeftButtonUp")
         btn:SetHeight(tabBtnHeight)
         btn:SetBackdrop({
             bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -417,6 +419,7 @@ DF.ModuleSystem:Register("TextureBrowser", function(sidebarParent, editorParent)
 
         -- Favorite star
         local star = CreateFrame("Button", nil, item.frame)
+        star:RegisterForClicks("LeftButtonUp")
         star:SetSize(14, 14)
         star:SetPoint("TOPRIGHT", item.frame, "TOPRIGHT", -1, -1)
         star:SetFrameLevel(item.frame:GetFrameLevel() + 2)

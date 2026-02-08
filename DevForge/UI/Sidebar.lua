@@ -42,6 +42,7 @@ function Sidebar:Create(parent)
 
     -- Collapse toggle button
     local collapseBtn = CreateFrame("Button", nil, header)
+    collapseBtn:RegisterForClicks("LeftButtonUp")
     collapseBtn:SetSize(16, 16)
     collapseBtn:SetPoint("RIGHT", -4, 0)
 

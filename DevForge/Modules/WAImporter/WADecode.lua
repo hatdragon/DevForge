@@ -104,7 +104,15 @@ local function ParseTriggers(triggerList)
                 spellName = t.realSpellName or t.spellName,
                 custom = t.custom,
                 customName = t.customName,
+                custom_type = t.custom_type,      -- "stateupdate", "event", "status"
+                events = t.events,                -- space-separated event list (e.g. "UNIT_AURA:player PLAYER_ENTERING_WORLD")
+                check = t.check,                  -- stateupdate check function
             }
+            -- Extract untrigger custom code
+            local ut = entry.untrigger
+            if ut and ut.custom then
+                info.customUntrigger = ut.custom
+            end
             triggers[#triggers + 1] = info
         end
     end
@@ -353,6 +361,7 @@ local function AnalyzeAura(d)
         alpha = d.alpha,
         desaturate = d.desaturate,
         anchorFrameType = d.anchorFrameType,
+        subRegions = d.subRegions,
     }
 end
 

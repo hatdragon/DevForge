@@ -10,6 +10,19 @@ function MainWin:Create()
 
     local L = DF.Layout
 
+    -- After /reload the named frame survives with stale children from the
+    -- previous session.  Disable the old frame so it cannot intercept mouse
+    -- events over the freshly-created widgets.
+    local stale = _G["DevForgeMainWindow"]
+    if stale then
+        stale:Hide()
+        stale:EnableMouse(false)
+        for _, child in pairs({stale:GetChildren()}) do
+            child:Hide()
+            child:EnableMouse(false)
+        end
+    end
+
     local frame = CreateFrame("Frame", "DevForgeMainWindow", UIParent, "BackdropTemplate")
     frame:SetFrameStrata("HIGH")
     frame:SetClampedToScreen(true)
@@ -75,6 +88,7 @@ function MainWin:Create()
     taintText:SetTextColor(0.6, 0.4, 0.2, 0.6)
 
     local infoBtn = CreateFrame("Button", nil, titleBar)
+    infoBtn:RegisterForClicks("LeftButtonUp")
     infoBtn:SetSize(32, 32)
     infoBtn:SetPoint("LEFT", taintText, "RIGHT", 3, 0)
     local infoBtnIcon = infoBtn:CreateTexture(nil, "OVERLAY")
@@ -345,7 +359,14 @@ function MainWin:Create()
     ---------------------------------------------------------------------------
     -- Hide on Escape
     ---------------------------------------------------------------------------
-    table.insert(UISpecialFrames, "DevForgeMainWindow")
+    -- Avoid duplicate entries after /reload
+    local found = false
+    for _, name in ipairs(UISpecialFrames) do
+        if name == "DevForgeMainWindow" then found = true; break end
+    end
+    if not found then
+        table.insert(UISpecialFrames, "DevForgeMainWindow")
+    end
 
     -- Deactivate module on hide, reactivate on show
     frame:SetScript("OnHide", function()

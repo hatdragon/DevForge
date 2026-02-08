@@ -8,21 +8,6 @@ local WACodeGen = DF.WACodeGen
 -- Helpers
 ---------------------------------------------------------------------------
 
--- Check if an aura should start shown (custom/always-on triggers)
--- vs hidden (event-driven triggers like aura2/status)
-local function ShouldStartShown(aura)
-    if not aura.triggers or #aura.triggers == 0 then
-        return false
-    end
-    for _, trig in ipairs(aura.triggers) do
-        if trig.type == "aura2" or trig.type == "status" or trig.type == "event" then
-            return false
-        end
-    end
-    -- All triggers are custom or unknown — likely an always-on display
-    return true
-end
-
 local function SanitizeName(name)
     if not name or name == "" then return "MyAura" end
     return name:gsub("[^%w_]", ""):gsub("^%d", "_")
@@ -43,18 +28,61 @@ local function Indent(lines, prefix)
     return out
 end
 
--- Check if an aura has any custom triggers
-local function HasCustomTriggers(aura)
-    for _, trig in ipairs(aura.triggers or {}) do
-        if trig.type == "custom" and trig.custom then return true end
-    end
-    return false
-end
-
 -- Check if an aura has event-driven triggers that handle visibility
 local function HasEventTriggers(aura)
     for _, trig in ipairs(aura.triggers or {}) do
         if trig.type == "aura2" or trig.type == "status" or trig.type == "event" then
+            return true
+        end
+    end
+    return false
+end
+
+-- Parse a WA custom trigger events string ("EVENT1 EVENT2:unit") into structured list
+local function ParseCustomEvents(eventsStr)
+    if not eventsStr or eventsStr == "" then return {} end
+    local events = {}
+    for token in eventsStr:gmatch("%S+") do
+        -- Strip trailing commas/semicolons (WA often comma-separates events)
+        token = token:gsub("[,;]+$", "")
+        if token ~= "" then
+            local evt, unit = token:match("^(.+):(.+)$")
+            if evt then
+                events[#events + 1] = { event = evt, unit = unit }
+            else
+                events[#events + 1] = { event = token }
+            end
+        end
+    end
+    return events
+end
+
+-- Strip leading comment lines and whitespace from WA custom code,
+-- returning (leadingComments, strippedCode)
+local function StripLeadingComments(code)
+    local lines = {}
+    local leading = {}
+    local pastComments = false
+    for line in code:gmatch("[^\r\n]+") do
+        if not pastComments then
+            local trimmed = line:match("^%s*(.-)%s*$")
+            if trimmed == "" or trimmed:match("^%-%-") then
+                leading[#leading + 1] = line
+            else
+                pastComments = true
+                lines[#lines + 1] = line
+            end
+        else
+            lines[#lines + 1] = line
+        end
+    end
+    return leading, table.concat(lines, "\n")
+end
+
+-- Has custom triggers that should be polled via OnUpdate (excludes stateupdate/event-driven)
+local function HasPollableCustomTriggers(aura)
+    for _, trig in ipairs(aura.triggers or {}) do
+        if trig.type == "custom" and trig.custom and trig.custom_type ~= "stateupdate" and trig.custom_type ~= "event" then
             return true
         end
     end
@@ -163,11 +191,13 @@ local function EmitAuraEnv(lines, aura, frameName)
     if frameName then
         lines[#lines + 1] = "    aura_env.region = " .. frameName
     end
+    lines[#lines + 1] = "    aura_env.state = {}"
+    lines[#lines + 1] = "    aura_env.states = {}"
     lines[#lines + 1] = ""
 end
 
--- Emit WA API stubs if the aura's custom code references WeakAuras APIs.
--- Uses real WA table if WeakAuras is installed, stubs otherwise.
+-- Emit per-aura WA setup: register this aura's region in the global WA regions table.
+-- Global WA stubs are set up once in GenerateInit; this just adds aura-specific bindings.
 local function EmitWAStubs(lines, aura)
     -- Collect all custom code strings to scan
     local codeStrings = {}
@@ -186,22 +216,10 @@ local function EmitWAStubs(lines, aura)
     local needsWA = allCode:find("WeakAuras")
     if not needsWA then return end
 
-    lines[#lines + 1] = "    -- WA API compatibility shim (uses real WA if installed, stubs if not)"
-    lines[#lines + 1] = "    local WeakAuras = WeakAuras or {}"
-
-    if allCode:find("WeakAuras%.IsOptionsOpen") or allCode:find("WeakAuras%.IsOptionsOpen%(") then
-        lines[#lines + 1] = "    if not WeakAuras.IsOptionsOpen then WeakAuras.IsOptionsOpen = function() return false end end"
-    end
-    if allCode:find("WeakAuras%.GetRegion") then
-        lines[#lines + 1] = "    if not WeakAuras.GetRegion then WeakAuras.GetRegion = function() return aura_env.region end end"
-    end
-    if allCode:find("WeakAuras%.regions") then
-        lines[#lines + 1] = "    if not WeakAuras.regions then WeakAuras.regions = setmetatable({}, { __index = function() return { region = aura_env.region } end }) end"
-    end
-    if allCode:find("WeakAuras%.GetData") then
-        lines[#lines + 1] = "    if not WeakAuras.GetData then WeakAuras.GetData = function() return {} end end"
-    end
-
+    lines[#lines + 1] = "    -- Register this aura in WA regions table (global stubs set up at top of Init)"
+    lines[#lines + 1] = "    if WeakAuras and WeakAuras.regions then"
+    lines[#lines + 1] = "        WeakAuras.regions[" .. Quoted(aura.id or "Unnamed") .. "] = { region = aura_env.region }"
+    lines[#lines + 1] = "    end"
     lines[#lines + 1] = ""
 end
 
@@ -221,6 +239,108 @@ local function EmitCustomCode(lines, code, banner, asLive)
         end
     end
     lines[#lines + 1] = "    -- ============ end WA " .. banner .. " ============"
+end
+
+-- Wire onShow/onHide code as frame callbacks instead of commenting them out.
+local function EmitFrameCallbacks(lines, aura, frameName)
+    if aura.onShowCode then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "    -- ============ WA onShow callback ============"
+        lines[#lines + 1] = "    " .. frameName .. ':SetScript("OnShow", function(self)'
+        for line in aura.onShowCode:gmatch("[^\r\n]+") do
+            lines[#lines + 1] = "        " .. line
+        end
+        lines[#lines + 1] = "    end)"
+    end
+    if aura.onHideCode then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "    -- ============ WA onHide callback ============"
+        lines[#lines + 1] = "    " .. frameName .. ':SetScript("OnHide", function(self)'
+        for line in aura.onHideCode:gmatch("[^\r\n]+") do
+            lines[#lines + 1] = "        " .. line
+        end
+        lines[#lines + 1] = "    end)"
+    end
+end
+
+-- Fire stateupdate triggers once after setup to establish initial state.
+local function EmitInitialStateUpdateEval(lines, aura, frameName)
+    for i, trig in ipairs(aura.triggers or {}) do
+        if trig.type == "custom" and trig.custom_type == "stateupdate" then
+            lines[#lines + 1] = ""
+            lines[#lines + 1] = "    -- Initial stateupdate evaluation (trigger " .. i .. ")"
+            lines[#lines + 1] = "    do"
+            lines[#lines + 1] = "        local changed = stateUpdate_" .. i .. " and stateUpdate_" .. i .. "(allstates_" .. i .. ', "STATUS")'
+            lines[#lines + 1] = "        if changed then"
+            lines[#lines + 1] = "            local anyShow = (next(allstates_" .. i .. ") == nil)  -- empty allstates = trigger active"
+            lines[#lines + 1] = "            for _, st in pairs(allstates_" .. i .. ") do"
+            lines[#lines + 1] = "                if st.show then anyShow = true; break end"
+            lines[#lines + 1] = "            end"
+            lines[#lines + 1] = "            triggerStates[" .. i .. "] = anyShow"
+            lines[#lines + 1] = "            EvalTriggers()"
+            lines[#lines + 1] = "        end"
+            lines[#lines + 1] = "    end"
+        end
+    end
+end
+
+-- Emit per-frame unified trigger state tracking.
+-- Creates a triggerStates table and EvalTriggers() function that combines
+-- all trigger states according to the aura's disjunctive mode (AND/OR).
+local function EmitTriggerStateTracking(lines, aura, frameName)
+    if not aura.triggers or #aura.triggers == 0 then return end
+
+    local N = #aura.triggers
+    local useAny = (aura.disjunctive == "any")
+
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "    -- Unified trigger state tracking (disjunctive=" .. tostring(aura.disjunctive) .. ")"
+    lines[#lines + 1] = "    local triggerStates = {}"
+    for i, trig in ipairs(aura.triggers) do
+        if trig.type == "custom" or trig.type == "aura2" or trig.type == "status" or trig.type == "event" then
+            lines[#lines + 1] = "    triggerStates[" .. i .. "] = false"
+        else
+            -- Unknown trigger type: default to active so it doesn't block visibility
+            lines[#lines + 1] = "    triggerStates[" .. i .. "] = true  -- " .. tostring(trig.type) .. ": default active"
+        end
+    end
+    lines[#lines + 1] = ""
+    if useAny then
+        lines[#lines + 1] = "    local function EvalTriggers()"
+        lines[#lines + 1] = "        for i = 1, " .. N .. " do"
+        lines[#lines + 1] = "            if triggerStates[i] then " .. frameName .. ":Show(); return end"
+        lines[#lines + 1] = "        end"
+        lines[#lines + 1] = "        " .. frameName .. ":Hide()"
+        lines[#lines + 1] = "    end"
+    else
+        lines[#lines + 1] = "    local function EvalTriggers()"
+        lines[#lines + 1] = "        for i = 1, " .. N .. " do"
+        lines[#lines + 1] = "            if not triggerStates[i] then " .. frameName .. ":Hide(); return end"
+        lines[#lines + 1] = "        end"
+        lines[#lines + 1] = "        " .. frameName .. ":Show()"
+        lines[#lines + 1] = "    end"
+    end
+end
+
+-- Check if any aura in the analysis references WeakAuras APIs
+local function AnalysisNeedsWA(analysis)
+    for _, aura in ipairs(analysis.auras or {}) do
+        local codeStrings = {}
+        local function collect(s) if s then codeStrings[#codeStrings + 1] = s end end
+        collect(aura.initCode)
+        collect(aura.onShowCode)
+        collect(aura.onHideCode)
+        collect(aura.customText)
+        for _, trig in ipairs(aura.triggers or {}) do
+            collect(trig.custom)
+            collect(trig.customName)
+        end
+        if #codeStrings > 0 then
+            local allCode = table.concat(codeStrings, "\n")
+            if allCode:find("WeakAuras") then return true end
+        end
+    end
+    return false
 end
 
 -- WA bundled texture substitutions
@@ -376,16 +496,73 @@ local function GenPowerTrigger(trig, frameName, index)
     return lines
 end
 
-local function GenCustomTrigger(trig, index)
+local function GenStateUpdateTrigger(trig, frameName, index)
     local lines = {}
     local function add(s) lines[#lines + 1] = s end
+
+    -- Register events from the trigger's events field (pcall for custom WA events)
+    local events = ParseCustomEvents(trig.events)
+    for _, ev in ipairs(events) do
+        if ev.unit then
+            add('pcall(' .. frameName .. '.RegisterUnitEvent, ' .. frameName .. ', "' .. ev.event .. '", "' .. ev.unit .. '")')
+        else
+            add('pcall(' .. frameName .. '.RegisterEvent, ' .. frameName .. ', "' .. ev.event .. '")')
+        end
+    end
+
+    -- State table for this trigger
+    add("local allstates_" .. index .. " = {}")
+    add("")
+
+    -- The stateupdate function: signature is function(allstates, event, ...)
+    add("-- WA stateupdate trigger " .. index)
+    if trig.custom then
+        local code = trig.custom:match("^%s*(.-)%s*$")
+        local leadingLines, stripped = StripLeadingComments(code)
+        if stripped:match("^function%s*%(") then
+            for _, cline in ipairs(leadingLines) do
+                add(cline)
+            end
+            add("local stateUpdate_" .. index .. " = " .. stripped)
+        else
+            add("local function stateUpdate_" .. index .. "(allstates, event, ...)")
+            for line in code:gmatch("[^\r\n]+") do
+                add("    " .. line)
+            end
+            add("end")
+        end
+    else
+        add("-- (no custom code found for stateupdate trigger)")
+    end
+
+    return lines
+end
+
+local function GenCustomTrigger(trig, frameName, index)
+    local lines = {}
+    local function add(s) lines[#lines + 1] = s end
+
+    -- Register events if present (event-driven custom triggers; pcall for custom WA events)
+    if trig.events and trig.events ~= "" and frameName then
+        local events = ParseCustomEvents(trig.events)
+        for _, ev in ipairs(events) do
+            if ev.unit then
+                add('pcall(' .. frameName .. '.RegisterUnitEvent, ' .. frameName .. ', "' .. ev.event .. '", "' .. ev.unit .. '")')
+            else
+                add('pcall(' .. frameName .. '.RegisterEvent, ' .. frameName .. ', "' .. ev.event .. '")')
+            end
+        end
+    end
 
     add("-- WA custom trigger " .. index)
     if trig.custom then
         local code = trig.custom:match("^%s*(.-)%s*$")
-        -- WA custom triggers are anonymous function bodies; assign to a local
-        if code:match("^function%s*%(") then
-            add("local customTrigger_" .. index .. " = " .. code)
+        local leadingLines, stripped = StripLeadingComments(code)
+        if stripped:match("^function%s*%(") then
+            for _, cline in ipairs(leadingLines) do
+                add(cline)
+            end
+            add("local customTrigger_" .. index .. " = " .. stripped)
         else
             add("local function customTrigger_" .. index .. "()")
             for line in code:gmatch("[^\r\n]+") do
@@ -434,7 +611,10 @@ local function GenTriggerCode(trig, frameName, index)
             return lines
         end
     elseif trig.type == "custom" then
-        return GenCustomTrigger(trig, index)
+        if trig.custom_type == "stateupdate" then
+            return GenStateUpdateTrigger(trig, frameName, index)
+        end
+        return GenCustomTrigger(trig, frameName, index)
     elseif trig.type == "event" then
         return GenEventTrigger(trig, frameName, index)
     end
@@ -461,25 +641,26 @@ local function GenOnEventHandler(aura, frameName, varPrefix)
             hasTriggers = true
             break
         end
+        if trig.type == "custom" and (trig.custom_type == "stateupdate" or trig.custom_type == "event") then
+            hasTriggers = true
+            break
+        end
     end
 
     if not hasTriggers then return lines end
 
     add(frameName .. ':SetScript("OnEvent", function(self, event, ...)')
 
-    -- Aura triggers
+    -- Standard triggers (aura2 / status / event)
     for i, trig in ipairs(aura.triggers) do
         if trig.type == "aura2" then
             add('    if event == "UNIT_AURA" then')
             add("        local show = CheckAura_" .. i .. "()")
-            if aura.regionType == "icon" or aura.regionType == "texture" then
-                add("        if show then self:Show() else self:Hide() end")
-            elseif aura.regionType == "aurabar" then
+            if aura.regionType == "aurabar" then
                 add("        self.active = show")
-                add("        if show then self:Show() else self:Hide() end")
-            else
-                add("        if show then self:Show() else self:Hide() end")
             end
+            add("        triggerStates[" .. i .. "] = show")
+            add("        EvalTriggers()")
             add("    end")
         elseif trig.type == "status" then
             if trig.event == "Cooldown Progress (Spell)" or
@@ -487,15 +668,10 @@ local function GenOnEventHandler(aura, frameName, varPrefix)
                 add('    if event == "SPELL_UPDATE_COOLDOWN" then')
                 add("        local onCD, start, dur = CheckCooldown_" .. i .. "()")
                 if aura.regionType == "icon" then
-                    add("        if onCD and self.cooldown then")
-                    add("            self.cooldown:SetCooldown(start, dur)")
-                    add("            self:Show()")
-                    add("        else")
-                    add("            self:Hide()")
-                    add("        end")
-                else
-                    add("        if onCD then self:Show() else self:Hide() end")
+                    add("        if onCD and self.cooldown then self.cooldown:SetCooldown(start, dur) end")
                 end
+                add("        triggerStates[" .. i .. "] = onCD and true or false")
+                add("        EvalTriggers()")
                 add("    end")
             elseif trig.event == "Health" then
                 add('    if event == "UNIT_HEALTH" then')
@@ -520,7 +696,45 @@ local function GenOnEventHandler(aura, frameName, varPrefix)
         end
     end
 
+    -- Stateupdate triggers: called on any event, manage allstates table
+    for i, trig in ipairs(aura.triggers) do
+        if trig.type == "custom" and trig.custom_type == "stateupdate" then
+            add("")
+            add("    -- Stateupdate trigger " .. i)
+            add("    do")
+            add("        local changed = stateUpdate_" .. i .. " and stateUpdate_" .. i .. "(allstates_" .. i .. ", event, ...)")
+            add("        if changed then")
+            add("            local anyShow = (next(allstates_" .. i .. ") == nil)  -- empty allstates = trigger active")
+            add("            for _, st in pairs(allstates_" .. i .. ") do")
+            add("                if st.show then anyShow = true; break end")
+            add("            end")
+            add("            triggerStates[" .. i .. "] = anyShow")
+            add("            EvalTriggers()")
+            add("        end")
+            add("    end")
+        end
+    end
+
+    -- Event-driven custom triggers: called on their registered events
+    for i, trig in ipairs(aura.triggers) do
+        if trig.type == "custom" and trig.custom_type == "event" then
+            add("")
+            add("    -- Event-driven custom trigger " .. i)
+            add("    do")
+            add("        local result = customTrigger_" .. i .. " and customTrigger_" .. i .. "(event, ...)")
+            add("        triggerStates[" .. i .. "] = result and true or false")
+            add("        EvalTriggers()")
+            add("    end")
+        end
+    end
+
     add("end)")
+
+    -- Register frame for WA ScanEvents custom event dispatch
+    add("")
+    add("if WeakAuras and WeakAuras._scanEventFrames then")
+    add("    WeakAuras._scanEventFrames[#WeakAuras._scanEventFrames + 1] = " .. frameName)
+    add("end")
 
     return lines
 end
@@ -535,7 +749,10 @@ end
 local function EmitCustomTriggerOnUpdate(lines, aura, frameName, displayFnName, additionalLines)
     local customIdxs = {}
     for i, trig in ipairs(aura.triggers or {}) do
-        if trig.type == "custom" and trig.custom then
+        -- Only poll non-stateupdate, non-event-driven custom triggers via OnUpdate
+        if trig.type == "custom" and trig.custom
+           and trig.custom_type ~= "stateupdate"
+           and trig.custom_type ~= "event" then
             customIdxs[#customIdxs + 1] = i
         end
     end
@@ -545,8 +762,6 @@ local function EmitCustomTriggerOnUpdate(lines, aura, frameName, displayFnName, 
     local mouseFollow = (aura.anchorFrameType == "MOUSE")
 
     if not hasCustomTriggers and not hasDynText and not mouseFollow then return end
-
-    local useAny = (aura.disjunctive == "any")
 
     lines[#lines + 1] = ""
 
@@ -592,22 +807,13 @@ local function EmitCustomTriggerOnUpdate(lines, aura, frameName, displayFnName, 
             lines[#lines + 1] = "        local trigResult_" .. idx .. " = customTrigger_" .. idx .. " and customTrigger_" .. idx .. "()"
         end
 
-        -- Compute show from individual results
-        local parts = {}
-        for _, idx in ipairs(customIdxs) do
-            parts[#parts + 1] = "trigResult_" .. idx
-        end
-
+        -- Update unified trigger states from polled results
         lines[#lines + 1] = ""
-        if useAny then
-            lines[#lines + 1] = "        -- Show if any trigger active (disjunctive=\"any\")"
-            lines[#lines + 1] = "        local show = " .. table.concat(parts, " or ")
-        else
-            lines[#lines + 1] = "        -- Show if all triggers active (disjunctive=\"all\")"
-            lines[#lines + 1] = "        local show = " .. table.concat(parts, " and ")
+        for _, idx in ipairs(customIdxs) do
+            lines[#lines + 1] = "        triggerStates[" .. idx .. "] = trigResult_" .. idx .. " and true or false"
         end
-        lines[#lines + 1] = "        if not show then self:Hide() return end"
-        lines[#lines + 1] = "        self:Show()"
+        lines[#lines + 1] = "        EvalTriggers()"
+        lines[#lines + 1] = "        if not self:IsShown() then return end"
     end
 
     if hasDynText then
@@ -741,6 +947,9 @@ local function GenIconAura(aura, index, parentFrame)
         add("")
     end
 
+    -- Unified trigger state tracking
+    EmitTriggerStateTracking(lines, aura, frameName)
+
     -- OnEvent handler
     local handlerLines = GenOnEventHandler(aura, frameName, var)
     for _, hl in ipairs(handlerLines) do
@@ -749,13 +958,15 @@ local function GenIconAura(aura, index, parentFrame)
 
     -- WA custom code
     EmitCustomCode(lines, aura.initCode, "init custom code", true)
-    EmitCustomCode(lines, aura.onShowCode, "onShow custom code", false)
-    EmitCustomCode(lines, aura.onHideCode, "onHide custom code", false)
+    EmitFrameCallbacks(lines, aura, frameName)
 
     -- OnUpdate for custom trigger polling / cursor following
-    if (HasCustomTriggers(aura) and not HasEventTriggers(aura)) or aura.anchorFrameType == "MOUSE" then
+    if HasPollableCustomTriggers(aura) or aura.anchorFrameType == "MOUSE" then
         EmitCustomTriggerOnUpdate(lines, aura, frameName, nil)
     end
+
+    -- Initial stateupdate evaluation
+    EmitInitialStateUpdateEval(lines, aura, frameName)
 
     if not aura.triggers or #aura.triggers == 0 then
         add("")
@@ -763,10 +974,10 @@ local function GenIconAura(aura, index, parentFrame)
     end
 
     add("")
-    if ShouldStartShown(aura) then
-        add("    " .. frameName .. ":Show()")
+    if aura.triggers and #aura.triggers > 0 then
+        add("    EvalTriggers()  -- Set initial visibility from trigger defaults")
     else
-        add("    " .. frameName .. ":Hide()  -- Hidden until triggered")
+        add("    " .. frameName .. ":Show()  -- No triggers, always visible")
     end
     add("end")
 
@@ -819,8 +1030,11 @@ local function GenAuraBarAura(aura, index, parentFrame)
         add("")
     end
 
-    if HasCustomTriggers(aura) and not HasEventTriggers(aura) then
-        -- Custom-trigger-only bar: poll triggers via OnUpdate
+    -- Unified trigger state tracking
+    EmitTriggerStateTracking(lines, aura, frameName)
+
+    if HasPollableCustomTriggers(aura) then
+        -- Custom trigger polling via OnUpdate (handles show/hide via EvalTriggers)
         EmitCustomTriggerOnUpdate(lines, aura, frameName, nil)
     else
         -- OnUpdate for smooth countdown (event-driven bars)
@@ -848,8 +1062,10 @@ local function GenAuraBarAura(aura, index, parentFrame)
 
     -- WA custom code
     EmitCustomCode(lines, aura.initCode, "init custom code", true)
-    EmitCustomCode(lines, aura.onShowCode, "onShow custom code", false)
-    EmitCustomCode(lines, aura.onHideCode, "onHide custom code", false)
+    EmitFrameCallbacks(lines, aura, frameName)
+
+    -- Initial stateupdate evaluation
+    EmitInitialStateUpdateEval(lines, aura, frameName)
 
     if not aura.triggers or #aura.triggers == 0 then
         add("")
@@ -857,10 +1073,10 @@ local function GenAuraBarAura(aura, index, parentFrame)
     end
 
     add("")
-    if ShouldStartShown(aura) then
-        add("    " .. frameName .. ":Show()")
+    if aura.triggers and #aura.triggers > 0 then
+        add("    EvalTriggers()  -- Set initial visibility from trigger defaults")
     else
-        add("    " .. frameName .. ":Hide()")
+        add("    " .. frameName .. ":Show()  -- No triggers, always visible")
     end
     add("end")
 
@@ -968,6 +1184,9 @@ local function GenTextAura(aura, index, parentFrame)
         add("")
     end
 
+    -- Unified trigger state tracking
+    EmitTriggerStateTracking(lines, aura, frameName)
+
     -- OnEvent handler (for event-driven triggers)
     local handlerLines = GenOnEventHandler(aura, frameName, var)
     for _, hl in ipairs(handlerLines) do
@@ -976,14 +1195,16 @@ local function GenTextAura(aura, index, parentFrame)
 
     -- WA custom code
     EmitCustomCode(lines, aura.initCode, "init custom code", true)
-    EmitCustomCode(lines, aura.onShowCode, "onShow custom code", false)
-    EmitCustomCode(lines, aura.onHideCode, "onHide custom code", false)
+    EmitFrameCallbacks(lines, aura, frameName)
 
     -- OnUpdate: custom trigger polling + dynamic text refresh + conditions + cursor following
-    if HasCustomTriggers(aura) or hasDynamicText or aura.anchorFrameType == "MOUSE" then
+    if HasPollableCustomTriggers(aura) or hasDynamicText or aura.anchorFrameType == "MOUSE" then
         local condLines = BuildConditionLines(aura)
         EmitCustomTriggerOnUpdate(lines, aura, frameName, displayFnName, condLines)
     end
+
+    -- Initial stateupdate evaluation
+    EmitInitialStateUpdateEval(lines, aura, frameName)
 
     if not aura.triggers or #aura.triggers == 0 then
         if not hasDynamicText then
@@ -993,10 +1214,10 @@ local function GenTextAura(aura, index, parentFrame)
     end
 
     add("")
-    if ShouldStartShown(aura) then
-        add("    " .. frameName .. ":Show()")
+    if aura.triggers and #aura.triggers > 0 then
+        add("    EvalTriggers()  -- Set initial visibility from trigger defaults")
     else
-        add("    " .. frameName .. ":Hide()")
+        add("    " .. frameName .. ":Show()  -- No triggers, always visible")
     end
     add("end")
 
@@ -1055,6 +1276,9 @@ local function GenTextureAura(aura, index, parentFrame)
         add("")
     end
 
+    -- Unified trigger state tracking
+    EmitTriggerStateTracking(lines, aura, frameName)
+
     -- OnEvent handler
     local handlerLines = GenOnEventHandler(aura, frameName, var)
     for _, hl in ipairs(handlerLines) do
@@ -1063,13 +1287,15 @@ local function GenTextureAura(aura, index, parentFrame)
 
     -- WA custom code
     EmitCustomCode(lines, aura.initCode, "init custom code", true)
-    EmitCustomCode(lines, aura.onShowCode, "onShow custom code", false)
-    EmitCustomCode(lines, aura.onHideCode, "onHide custom code", false)
+    EmitFrameCallbacks(lines, aura, frameName)
 
     -- OnUpdate for custom trigger polling / cursor following
-    if (HasCustomTriggers(aura) and not HasEventTriggers(aura)) or aura.anchorFrameType == "MOUSE" then
+    if HasPollableCustomTriggers(aura) or aura.anchorFrameType == "MOUSE" then
         EmitCustomTriggerOnUpdate(lines, aura, frameName, nil)
     end
+
+    -- Initial stateupdate evaluation
+    EmitInitialStateUpdateEval(lines, aura, frameName)
 
     if not aura.triggers or #aura.triggers == 0 then
         add("")
@@ -1077,10 +1303,10 @@ local function GenTextureAura(aura, index, parentFrame)
     end
 
     add("")
-    if ShouldStartShown(aura) then
-        add("    " .. frameName .. ":Show()")
+    if aura.triggers and #aura.triggers > 0 then
+        add("    EvalTriggers()  -- Set initial visibility from trigger defaults")
     else
-        add("    " .. frameName .. ":Hide()")
+        add("    " .. frameName .. ":Show()  -- No triggers, always visible")
     end
     add("end")
 
@@ -1270,6 +1496,70 @@ local function GenerateInit(analysis, projectName)
     add("    -- Check enabled flag")
     add("    if not db.enabled then return end")
     add("")
+
+    -- Global WeakAuras API stubs (set up once, before any aura code runs)
+    if AnalysisNeedsWA(analysis) then
+        -- Emit aura data registry so GetData can return subRegions, config, etc.
+        add("    -- Aura data registry (for WeakAuras.GetData compatibility)")
+        add("    local _auraData = {")
+        for _, aura in ipairs(analysis.auras) do
+            add("        [" .. Quoted(aura.id) .. "] = {")
+            add("            id = " .. Quoted(aura.id) .. ",")
+            add("            regionType = " .. Quoted(aura.regionType or "unknown") .. ",")
+            if aura.subRegions then
+                add("            subRegions = " .. EmitTableLiteral(aura.subRegions, "            ") .. ",")
+            end
+            if aura.config then
+                add("            config = " .. EmitTableLiteral(aura.config, "            ") .. ",")
+            end
+            add("        },")
+        end
+        add("    }")
+        add("")
+
+        add("    -- WeakAuras API compatibility (stubs when WeakAuras addon is not installed)")
+        add("    if not WeakAuras then")
+        add("        WeakAuras = setmetatable({")
+        add('            IsOptionsOpen = function() return false end,')
+        add('            GetData = function(id) return _auraData[id] or {} end,')
+        add('            GetRegion = function(id)')
+        add('                local r = WeakAuras.regions and WeakAuras.regions[id]')
+        add('                return r and r.region')
+        add('            end,')
+        add('            ScanEvents = function(event, ...)')
+        add('                for _, frame in ipairs(WeakAuras._scanEventFrames) do')
+        add('                    local handler = frame:GetScript("OnEvent")')
+        add('                    if handler then handler(frame, event, ...) end')
+        add('                end')
+        add('            end,')
+        add('            WatchGCD = function() end,')
+        add('            WatchSpellCooldown = function() end,')
+        add('            WatchItemCooldown = function() end,')
+        add('            WatchRuneDuration = function() end,')
+        add('            StopMotion = function() end,')
+        add('            prettyPrint = function(...) print(...) end,')
+        add('            IsRetail = function() return WOW_PROJECT_ID == WOW_PROJECT_MAINLINE end,')
+        add('            IsClassicEra = function() return false end,')
+        add('            IsCataClassic = function() return false end,')
+        add('            me = UnitGUID("player"),')
+        add('            myGUID = UnitGUID("player"),')
+        add("            regions = {},")
+        add("            currentStates = {},")
+        add("            _scanEventFrames = {},")
+        add("        }, {")
+        add("            __index = function(t, k)")
+        add("                -- Auto-stub unknown methods as no-ops to prevent errors")
+        add("                local v = rawget(t, k)")
+        add("                if v == nil then")
+        add("                    v = function() end")
+        add("                    rawset(t, k, v)")
+        add("                end")
+        add("                return v")
+        add("            end,")
+        add("        })")
+        add("    end")
+        add("")
+    end
 
     if analysis.isGroup then
         -- Container frame for groups

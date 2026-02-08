@@ -5,12 +5,17 @@ DF.EventMonitorLog = {}
 local Log = DF.EventMonitorLog
 
 local MAX_ENTRIES = 2000
+local DRAIN_PER_FRAME = 25  -- max queued events to process per frame
 local entries = {}
 local paused = false
 local filters = {}       -- event name -> true (whitelist). empty = capture all
 local blacklist = {}     -- event name -> true (never capture)
 local entryId = 0
 local onNewEntry = nil   -- callback(entry)
+
+-- Frame-batching: queue raw event data, process expensive serialization across frames
+local pendingQueue = {}  -- { { event, timestamp, numArgs, arg1, arg2, ... }, ... }
+local drainFrame = nil   -- OnUpdate frame for processing queue
 
 -- High-frequency events blacklisted by default (same approach as Blizzard_EventTrace)
 local DEFAULT_BLACKLIST = {
@@ -27,29 +32,23 @@ function Log:Init()
         blacklist[event] = true
     end
     self:LoadBlacklist()
+    if DF.EventIndex then
+        DF.EventIndex:LoadDiscovered()
+    end
 end
 
 function Log:SetOnNewEntry(callback)
     onNewEntry = callback
 end
 
--- Add an event to the log. Returns true if the event was actually captured.
-function Log:Push(event, timestamp, ...)
-    if paused then return false end
-
-    -- Blacklist check
-    if blacklist[event] then return false end
-
-    -- Whitelist check (empty = capture all)
-    if next(filters) and not filters[event] then return false end
-
-    entryId = entryId + 1
+-- Process a single queued event into a full entry (expensive: PrettyPrint, SecretGuard)
+local function ProcessQueuedEvent(queued)
+    local event = queued.event
+    local numArgs = queued.numArgs
 
     local args = {}
-    local numArgs = math.min(select("#", ...), 64)  -- cap for safety
     for i = 1, numArgs do
-        local val = select(i, ...)
-        -- Secret value check
+        local val = queued[i]
         if DF.SecretGuard:IsSecret(val) then
             args[i] = { display = DF.Colors.secret .. "[secret]|r", raw = nil }
         else
@@ -58,9 +57,9 @@ function Log:Push(event, timestamp, ...)
     end
 
     local entry = {
-        id = entryId,
+        id = queued.id,
         event = event,
-        time = timestamp or GetTime(),
+        time = queued.time,
         args = args,
         numArgs = numArgs,
     }
@@ -75,6 +74,75 @@ function Log:Push(event, timestamp, ...)
     if onNewEntry then
         onNewEntry(entry)
     end
+end
+
+-- OnUpdate handler: drain pending queue in batches
+local function DrainQueue()
+    if #pendingQueue == 0 then
+        if drainFrame then drainFrame:Hide() end
+        return
+    end
+
+    local count = math.min(#pendingQueue, DRAIN_PER_FRAME)
+    for i = 1, count do
+        ProcessQueuedEvent(pendingQueue[i])
+    end
+
+    -- Shift remaining items (remove processed from front)
+    if count == #pendingQueue then
+        wipe(pendingQueue)
+        if drainFrame then drainFrame:Hide() end
+    else
+        local remaining = #pendingQueue - count
+        for i = 1, remaining do
+            pendingQueue[i] = pendingQueue[i + count]
+        end
+        for i = remaining + 1, remaining + count do
+            pendingQueue[i] = nil
+        end
+    end
+end
+
+local function EnsureDrainFrame()
+    if not drainFrame then
+        drainFrame = CreateFrame("Frame")
+        drainFrame:SetScript("OnUpdate", DrainQueue)
+    end
+    drainFrame:Show()
+end
+
+-- Add an event to the log. Returns true if the event was queued for capture.
+function Log:Push(event, timestamp, ...)
+    -- Auto-discover unknown events (before filtering, so blacklisted ones get discovered too)
+    if DF.EventIndex and not DF.EventIndex:IsKnown(event) then
+        DF.EventIndex:RegisterDiscovered(event)
+    end
+
+    if paused then return false end
+
+    -- Blacklist check
+    if blacklist[event] then return false end
+
+    -- Whitelist check (empty = capture all)
+    if next(filters) and not filters[event] then return false end
+
+    -- Lightweight capture: assign ID and timestamp now, defer expensive serialization
+    entryId = entryId + 1
+
+    local numArgs = math.min(select("#", ...), 64)
+    local queued = {
+        id = entryId,
+        event = event,
+        time = timestamp or GetTime(),
+        numArgs = numArgs,
+    }
+    -- Store raw arg values by index (cheap table insert)
+    for i = 1, numArgs do
+        queued[i] = select(i, ...)
+    end
+
+    pendingQueue[#pendingQueue + 1] = queued
+    EnsureDrainFrame()
 
     return true
 end
@@ -84,11 +152,13 @@ function Log:GetEntries()
 end
 
 function Log:GetCount()
-    return #entries
+    return #entries + #pendingQueue
 end
 
 function Log:Clear()
     wipe(entries)
+    wipe(pendingQueue)
+    if drainFrame then drainFrame:Hide() end
     entryId = 0
 end
 
@@ -192,7 +262,10 @@ function Log:FormatEntry(entry)
     return timeStr .. "  " .. eventStr .. argStr
 end
 
--- Save blacklist on logout
+-- Save blacklist + discovered events on logout
 DF.EventBus:On("DF_PLAYER_LOGOUT", function()
     DF.EventMonitorLog:SaveBlacklist()
+    if DF.EventIndex then
+        DF.EventIndex:SaveDiscovered()
+    end
 end)

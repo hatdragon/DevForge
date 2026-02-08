@@ -129,6 +129,7 @@ DF.ModuleSystem:Register("TableViewer", function(sidebarParent, editorParent)
 
     -- Status label (clickable — click to copy raw text)
     local statusBtn = CreateFrame("Button", nil, toolbar)
+    statusBtn:RegisterForClicks("LeftButtonUp")
     statusBtn:SetPoint("LEFT", copyBtn, "RIGHT", 8, 0)
     statusBtn:SetPoint("RIGHT", -4, 0)
     statusBtn:SetHeight(DF.Layout.buttonHeight)

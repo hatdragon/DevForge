@@ -81,6 +81,13 @@ end
 local function GetDialog()
     if dialog then return dialog end
 
+    -- Clean up stale named frame from previous /reload
+    local stale = _G["DevForgeWAImporter"]
+    if stale then
+        stale:Hide(); stale:EnableMouse(false)
+        for _, c in pairs({stale:GetChildren()}) do c:Hide(); c:EnableMouse(false) end
+    end
+
     local frame = CreateFrame("Frame", "DevForgeWAImporter", UIParent, "BackdropTemplate")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetSize(480, 520)
@@ -90,7 +97,9 @@ local function GetDialog()
     frame:EnableMouse(true)
     frame:Hide()
     DF.Theme:ApplyDialogChrome(frame)
-    tinsert(UISpecialFrames, "DevForgeWAImporter")
+    if not tContains(UISpecialFrames, "DevForgeWAImporter") then
+        tinsert(UISpecialFrames, "DevForgeWAImporter")
+    end
 
     -- Title bar
     local titleBar = CreateFrame("Frame", nil, frame)
@@ -166,6 +175,29 @@ local function GetDialog()
     decodeBtn:SetPoint("TOPLEFT", LEFT, yOff - 16)
     yOff = yOff - 16 - DF.Layout.buttonHeight - 6
 
+    -- Warning banner (shown after successful decode)
+    local warningBanner = CreateFrame("Frame", nil, frame)
+    warningBanner:SetPoint("TOPLEFT", LEFT, -42)
+    warningBanner:SetPoint("RIGHT", frame, "RIGHT", RIGHT, 0)
+    warningBanner:Hide()
+
+    local warningBg = warningBanner:CreateTexture(nil, "BACKGROUND")
+    warningBg:SetAllPoints()
+    warningBg:SetColorTexture(0.35, 0.25, 0.05, 0.5)
+
+    local warningMsg = warningBanner:CreateFontString(nil, "OVERLAY")
+    warningMsg:SetFontObject(DF.Theme:UIFont())
+    warningMsg:SetPoint("TOPLEFT", 8, -6)
+    warningMsg:SetPoint("RIGHT", -8, 0)
+    warningMsg:SetWordWrap(true)
+    warningMsg:SetText("Imported code will execute in your WoW client. Only import from trusted sources. We do not speak for the safety or completeness of the generated code. Please review it before using.")
+    warningMsg:SetTextColor(0.9, 0.75, 0.3, 1)
+    warningMsg:SetJustifyH("LEFT")
+    warningBanner:SetHeight(warningMsg:GetStringHeight() + 12)
+
+    -- Default info panel anchor (below import area; re-anchored after decode)
+    local infoPanelDefaultY = yOff
+
     -- Info panel (shown after decode)
     local infoPanel = CreateFrame("Frame", nil, frame)
     infoPanel:SetPoint("TOPLEFT", LEFT, yOff)
@@ -179,15 +211,31 @@ local function GetDialog()
     infoName:SetTextColor(0.83, 0.83, 0.83, 1)
     infoName:SetText("")
 
-    local infoDetails = infoPanel:CreateFontString(nil, "OVERLAY")
+    -- Scrollable details area
+    local infoScroll = CreateFrame("ScrollFrame", nil, infoPanel)
+    infoScroll:SetPoint("TOPLEFT", infoName, "BOTTOMLEFT", 0, -2)
+    infoScroll:SetPoint("BOTTOMRIGHT", 0, 0)
+    infoScroll:EnableMouseWheel(true)
+    infoScroll:SetScript("OnMouseWheel", function(self, delta)
+        local current = self:GetVerticalScroll()
+        local child = self:GetScrollChild()
+        local maxScroll = math.max(0, (child and child:GetHeight() or 0) - self:GetHeight())
+        self:SetVerticalScroll(math.max(0, math.min(current - delta * 20, maxScroll)))
+    end)
+
+    local infoScrollChild = CreateFrame("Frame", nil, infoScroll)
+    local scrollContentWidth = 440
+    infoScrollChild:SetWidth(scrollContentWidth)
+    infoScroll:SetScrollChild(infoScrollChild)
+
+    local infoDetails = infoScrollChild:CreateFontString(nil, "OVERLAY")
     infoDetails:SetFontObject(DF.Theme:UIFont())
-    infoDetails:SetPoint("TOPLEFT", infoName, "BOTTOMLEFT", 0, -2)
-    infoDetails:SetPoint("RIGHT", infoPanel, "RIGHT", -4, 0)
+    infoDetails:SetPoint("TOPLEFT", 0, 0)
+    infoDetails:SetWidth(scrollContentWidth - 4)
     infoDetails:SetTextColor(0.5, 0.5, 0.5, 1)
     infoDetails:SetText("")
     infoDetails:SetWordWrap(true)
     infoDetails:SetJustifyH("LEFT")
-    -- yOff adjusted dynamically when info panel shows
 
     -- Project name input (hidden until decode)
     local projectNameInput = CreateTextInput(frame, "Project:", "", 200, function(val)
@@ -240,41 +288,117 @@ local function GetDialog()
         return clean
     end
 
-    local function BuildInfoText(analysis)
-        local parts = {}
+    local regionTypeNames = {
+        text = "Text", icon = "Icon", aurabar = "Aura Bar",
+        texture = "Texture", progresstexture = "Progress Texture",
+        model = "Model", group = "Group", dynamicgroup = "Dynamic Group",
+        stopmotion = "Stop Motion",
+    }
 
+    local function DescribeTrigger(trig)
+        if trig.type == "aura2" then
+            local name = trig.auranames and trig.auranames[1]
+            local id = trig.auraspellids and trig.auraspellids[1]
+            if name then return "watches buff/debuff \"" .. name .. "\"" end
+            if id then return "watches buff/debuff (spell " .. tostring(id) .. ")" end
+            return "watches buffs/debuffs"
+        elseif trig.type == "status" then
+            local evt = trig.event or ""
+            if evt:find("Health") then return "tracks health"
+            elseif evt:find("Power") then return "tracks power/resource"
+            elseif evt:find("Cast") then return "tracks spell casts"
+            elseif evt:find("Cooldown") then return "tracks cooldowns"
+            elseif evt:find("Totem") then return "tracks totems"
+            elseif evt:find("Stance") or evt:find("Form") then return "tracks stance/form"
+            elseif evt:find("Range") then return "tracks range check"
+            elseif evt:find("Talent") then return "checks talents"
+            elseif evt:find("Combat") then return "tracks combat state"
+            elseif evt:find("Threat") then return "tracks threat"
+            elseif evt:find("Unit") then return "tracks unit info"
+            else return "tracks " .. evt end
+        elseif trig.type == "event" then
+            return "fires on game event"
+        elseif trig.type == "custom" then
+            if trig.custom_type == "stateupdate" then return "custom state manager"
+            elseif trig.custom_type == "event" then return "custom event handler"
+            else return "custom polled check" end
+        end
+        return trig.type or "unknown"
+    end
+
+    local function BuildInfoText(analysis)
+        local lines = {}
+        local function add(s) lines[#lines + 1] = s end
+
+        -- Header
+        local name = analysis.groupId or "Unnamed"
         if analysis.isGroup then
-            parts[#parts + 1] = "Group: " .. (analysis.groupId or "Unknown")
-            parts[#parts + 1] = "Children: " .. #analysis.auras
+            add(name .. "  (" .. #analysis.auras .. " auras)")
         else
             local a = analysis.auras[1]
-            if a then
-                parts[#parts + 1] = "Type: " .. (a.regionType or "unknown")
-            end
+            local rt = a and (regionTypeNames[a.regionType] or a.regionType) or "unknown"
+            add(name .. "  (" .. rt .. ")")
         end
+        add("")
 
+        -- Per-aura summaries
         for i, aura in ipairs(analysis.auras) do
-            local trigDesc = {}
+            local rt = regionTypeNames[aura.regionType] or aura.regionType or "?"
+            local label = aura.id or ("Aura " .. i)
+
+            -- Build a one-line description of what this aura does
+            local what = {}
             for _, trig in ipairs(aura.triggers or {}) do
-                local desc = trig.type or "unknown"
-                if trig.type == "aura2" then
-                    if trig.auranames and #trig.auranames > 0 then
-                        desc = "aura: " .. trig.auranames[1]
-                    elseif trig.auraspellids and #trig.auraspellids > 0 then
-                        desc = "aura ID: " .. tostring(trig.auraspellids[1])
-                    end
-                elseif trig.type == "status" then
-                    desc = trig.event or "status"
-                end
-                trigDesc[#trigDesc + 1] = desc
+                what[#what + 1] = DescribeTrigger(trig)
             end
-            if #trigDesc > 0 then
-                local label = aura.id or ("Aura " .. i)
-                parts[#parts + 1] = label .. " triggers: " .. table.concat(trigDesc, ", ")
+
+            local desc = #what > 0 and table.concat(what, ", ") or "no triggers"
+            add("|cff88bbee" .. label .. "|r  " .. rt .. " - " .. desc)
+
+            -- Notable features
+            local features = {}
+            if aura.customText then features[#features + 1] = "dynamic text" end
+            if aura.initCode then features[#features + 1] = "init code" end
+            if aura.onShowCode then features[#features + 1] = "on-show action" end
+            if aura.onHideCode then features[#features + 1] = "on-hide action" end
+            if aura.conditions and #aura.conditions > 0 then
+                features[#features + 1] = #aura.conditions .. " condition(s)"
+            end
+            if #features > 0 then
+                add("     " .. table.concat(features, ", "))
             end
         end
 
-        return table.concat(parts, "\n")
+        -- Footer: config / options / load info
+        local footer = {}
+        local totalOpts = 0
+        local hasConfig = false
+        for _, aura in ipairs(analysis.auras) do
+            if aura.authorOptions then totalOpts = totalOpts + #aura.authorOptions end
+            if aura.config then hasConfig = true end
+        end
+        if totalOpts > 0 then footer[#footer + 1] = totalOpts .. " user option(s)" end
+        if hasConfig and totalOpts == 0 then footer[#footer + 1] = "has config values" end
+
+        -- Load conditions
+        local firstAura = analysis.auras[1]
+        if firstAura then
+            if firstAura.loadClass and #firstAura.loadClass > 0 then
+                footer[#footer + 1] = "class: " .. table.concat(firstAura.loadClass, "/")
+            end
+            if firstAura.loadSpec and #firstAura.loadSpec > 0 then
+                local specs = {}
+                for _, s in ipairs(firstAura.loadSpec) do specs[#specs + 1] = tostring(s) end
+                footer[#footer + 1] = "spec: " .. table.concat(specs, "/")
+            end
+        end
+
+        if #footer > 0 then
+            add("")
+            add(table.concat(footer, "  |  "))
+        end
+
+        return table.concat(lines, "\n")
     end
 
     local function OnDecode()
@@ -285,9 +409,15 @@ local function GetDialog()
         generatedFiles = nil
         errorText:SetText("")
         infoPanel:Hide()
+        warningBanner:Hide()
         projectNameInput.frame:Hide()
         fileSelectorRow:Hide()
         codePreview.frame:Hide()
+
+        -- Restore import area visibility (in case a previous decode hid it)
+        importLabel:Show()
+        importBox.frame:Show()
+        decodeBtn:Show()
 
         local str = state.importString
         if not str or str:match("^%s*$") then
@@ -315,10 +445,27 @@ local function GetDialog()
 
         state.analysis = analysis
 
+        -- Hide import area after successful decode
+        importLabel:Hide()
+        importBox.frame:Hide()
+        decodeBtn:Hide()
+        errorText:SetText("")
+
+        -- Show warning banner
+        warningBanner:Show()
+
+        -- Re-anchor info panel below warning (reclaims import area space)
+        infoPanel:ClearAllPoints()
+        infoPanel:SetPoint("TOPLEFT", warningBanner, "BOTTOMLEFT", 0, -4)
+        infoPanel:SetPoint("RIGHT", frame, "RIGHT", RIGHT, 0)
+        infoPanel:SetHeight(120)
+
         -- Populate info panel
         local auraName = analysis.groupId or (analysis.auras[1] and analysis.auras[1].id) or "WAImport"
         infoName:SetText(auraName)
         infoDetails:SetText(BuildInfoText(analysis))
+        -- Update scroll child height to fit content
+        infoScrollChild:SetHeight(math.max(infoDetails:GetStringHeight() + 4, 1))
         infoPanel:Show()
 
         -- Set project name
@@ -394,8 +541,21 @@ local function GetDialog()
         state.currentFile = nil
         generatedFiles = nil
 
+        -- Restore import area
+        importLabel:Show()
         importBox:SetText("")
+        importBox.frame:Show()
+        decodeBtn:Show()
+
         errorText:SetText("")
+        warningBanner:Hide()
+
+        -- Reset info panel to default position
+        infoPanel:ClearAllPoints()
+        infoPanel:SetPoint("TOPLEFT", LEFT, infoPanelDefaultY)
+        infoPanel:SetPoint("RIGHT", frame, "RIGHT", RIGHT, 0)
+        infoPanel:SetHeight(50)
+
         infoName:SetText("")
         infoDetails:SetText("")
         infoPanel:Hide()

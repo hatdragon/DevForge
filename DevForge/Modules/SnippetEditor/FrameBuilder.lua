@@ -243,6 +243,13 @@ end
 local function GetDialog()
     if dialog then return dialog end
 
+    -- Clean up stale named frame from previous /reload
+    local stale = _G["DevForgeFrameBuilder"]
+    if stale then
+        stale:Hide(); stale:EnableMouse(false)
+        for _, c in pairs({stale:GetChildren()}) do c:Hide(); c:EnableMouse(false) end
+    end
+
     local frame = CreateFrame("Frame", "DevForgeFrameBuilder", UIParent, "BackdropTemplate")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetSize(480, 540)
@@ -252,7 +259,9 @@ local function GetDialog()
     frame:EnableMouse(true)
     frame:Hide()
     DF.Theme:ApplyDialogChrome(frame)
-    tinsert(UISpecialFrames, "DevForgeFrameBuilder")
+    if not tContains(UISpecialFrames, "DevForgeFrameBuilder") then
+        tinsert(UISpecialFrames, "DevForgeFrameBuilder")
+    end
 
     -- Title bar
     local titleBar = CreateFrame("Frame", nil, frame)

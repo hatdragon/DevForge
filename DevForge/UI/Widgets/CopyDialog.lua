@@ -9,6 +9,13 @@ local dialog = nil
 local function GetDialog()
     if dialog then return dialog end
 
+    -- Clean up stale named frame from previous /reload
+    local stale = _G["DevForgeCopyDialog"]
+    if stale then
+        stale:Hide(); stale:EnableMouse(false)
+        for _, c in pairs({stale:GetChildren()}) do c:Hide(); c:EnableMouse(false) end
+    end
+
     local frame = CreateFrame("Frame", "DevForgeCopyDialog", UIParent, "BackdropTemplate")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetFrameLevel(999)

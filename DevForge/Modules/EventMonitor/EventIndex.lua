@@ -424,8 +424,23 @@ local CATEGORIES = {
     },
 }
 
+-- Fast lookup set of all hardcoded event names
+local knownEvents = {}
+for _, cat in ipairs(CATEGORIES) do
+    for _, entry in ipairs(cat.events) do
+        knownEvents[entry.event] = true
+    end
+end
+
+-- Discovered events (captured at runtime, not in hardcoded index)
+local discovered = {}  -- event name -> true
+
 -- Flat index for searching
 local flatIndex = nil
+
+local function InvalidateFlatIndex()
+    flatIndex = nil
+end
 
 local function BuildFlatIndex()
     if flatIndex then return end
@@ -438,6 +453,13 @@ local function BuildFlatIndex()
                 category = cat.name,
             }
         end
+    end
+    for event in pairs(discovered) do
+        flatIndex[#flatIndex + 1] = {
+            event = event,
+            desc = "Discovered at runtime",
+            category = "Discovered",
+        }
     end
     table.sort(flatIndex, function(a, b) return a.event < b.event end)
 end
@@ -476,15 +498,61 @@ function Index:Search(query)
     return results
 end
 
--- Lookup a single event
+-- Lookup a single event (fast path via hash set)
 function Index:Lookup(eventName)
-    BuildFlatIndex()
-    for _, entry in ipairs(flatIndex) do
-        if entry.event == eventName then
-            return entry
+    if knownEvents[eventName] or discovered[eventName] then
+        BuildFlatIndex()
+        for _, entry in ipairs(flatIndex) do
+            if entry.event == eventName then
+                return entry
+            end
         end
     end
     return nil
+end
+
+-- Check if an event is known (hardcoded or discovered)
+function Index:IsKnown(eventName)
+    return knownEvents[eventName] or discovered[eventName] or false
+end
+
+-- Register a runtime-discovered event
+function Index:RegisterDiscovered(eventName)
+    if knownEvents[eventName] or discovered[eventName] then return end
+    discovered[eventName] = true
+    InvalidateFlatIndex()
+end
+
+-- Persistence
+function Index:LoadDiscovered()
+    if DevForgeDB and DevForgeDB.discoveredEvents then
+        for _, event in ipairs(DevForgeDB.discoveredEvents) do
+            if not knownEvents[event] then
+                discovered[event] = true
+            end
+        end
+        InvalidateFlatIndex()
+    end
+end
+
+function Index:SaveDiscovered()
+    if not DevForgeDB then return end
+    local list = {}
+    for event in pairs(discovered) do
+        list[#list + 1] = event
+    end
+    table.sort(list)
+    DevForgeDB.discoveredEvents = list
+end
+
+-- Get discovered events as a sorted list of { event, desc }
+function Index:GetDiscovered()
+    local list = {}
+    for event in pairs(discovered) do
+        list[#list + 1] = { event = event, desc = "Discovered at runtime" }
+    end
+    table.sort(list, function(a, b) return a.event < b.event end)
+    return list
 end
 
 -- Build tree nodes for the TreeView widget

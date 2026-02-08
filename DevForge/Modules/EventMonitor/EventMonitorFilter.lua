@@ -47,11 +47,29 @@ function Filter:Create(parent)
     searchBox.frame:SetPoint("RIGHT", -2, 0)
 
     ---------------------------------------------------------------------------
+    -- Info banner
+    ---------------------------------------------------------------------------
+    local banner = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    banner:SetHeight(20)
+    banner:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
+    banner:SetPoint("TOPRIGHT", toolbar, "BOTTOMRIGHT", 0, -2)
+    local bannerBg = banner:CreateTexture(nil, "BACKGROUND")
+    bannerBg:SetAllPoints()
+    bannerBg:SetColorTexture(0.35, 0.25, 0.05, 0.6)
+    local bannerText = banner:CreateFontString(nil, "OVERLAY")
+    bannerText:SetFontObject(DF.Theme:UIFont())
+    bannerText:SetPoint("LEFT", 6, 0)
+    bannerText:SetPoint("RIGHT", -6, 0)
+    bannerText:SetJustifyH("LEFT")
+    bannerText:SetTextColor(0.9, 0.75, 0.3, 1)
+    bannerText:SetText("This list may be incomplete. New events are discovered automatically while capturing.")
+
+    ---------------------------------------------------------------------------
     -- Scroll area
     ---------------------------------------------------------------------------
     local container = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     DF.Theme:ApplyDarkPanel(container, true)
-    container:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
+    container:SetPoint("TOPLEFT", banner, "BOTTOMLEFT", 0, -2)
     container:SetPoint("BOTTOMRIGHT", 0, 0)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, container)
@@ -119,14 +137,6 @@ function Filter:Create(parent)
         local q = self.searchQuery:lower()
         local categories = DF.EventIndex:GetCategories()
 
-        -- Build set of indexed event names so we can find uncategorized ones
-        local indexedEvents = {}
-        for _, cat in ipairs(categories) do
-            for _, entry in ipairs(cat.events) do
-                indexedEvents[entry.event] = true
-            end
-        end
-
         for _, cat in ipairs(categories) do
             -- Collect matching events
             local matchingEvents = {}
@@ -156,48 +166,33 @@ function Filter:Create(parent)
             end
         end
 
-        -- Gather uncategorized events from log + blacklist
-        local uncatSeen = {}
-        local uncatEvents = {}
-        for _, entry in ipairs(DF.EventMonitorLog:GetEntries()) do
-            if not indexedEvents[entry.event] and not uncatSeen[entry.event] then
-                uncatSeen[entry.event] = true
-                uncatEvents[#uncatEvents + 1] = { event = entry.event, desc = "Captured event" }
-            end
-        end
-        for event in pairs(DF.EventMonitorLog:GetBlacklistTable()) do
-            if not indexedEvents[event] and not uncatSeen[event] then
-                uncatSeen[event] = true
-                uncatEvents[#uncatEvents + 1] = { event = event, desc = "Blacklisted event" }
-            end
-        end
-
-        if #uncatEvents > 0 then
-            table.sort(uncatEvents, function(a, b) return a.event < b.event end)
-            local otherCat = { name = "Other / Captured", events = uncatEvents }
+        -- Discovered events (runtime-captured, persisted across sessions)
+        local discoveredEvents = DF.EventIndex:GetDiscovered()
+        if #discoveredEvents > 0 then
+            local discoveredCat = { name = "Discovered", events = discoveredEvents }
 
             -- Apply search filter
-            local matchingOther = {}
-            for _, entry in ipairs(uncatEvents) do
+            local matchingDiscovered = {}
+            for _, entry in ipairs(discoveredEvents) do
                 if q == "" or entry.event:lower():find(q, 1, true) then
-                    matchingOther[#matchingOther + 1] = entry
+                    matchingDiscovered[#matchingDiscovered + 1] = entry
                 end
             end
 
-            if #matchingOther > 0 then
+            if #matchingDiscovered > 0 then
                 self.flatList[#self.flatList + 1] = {
                     type = ROW_CATEGORY,
-                    cat = otherCat,
-                    matchCount = #matchingOther,
+                    cat = discoveredCat,
+                    matchCount = #matchingDiscovered,
                 }
 
-                if self.expanded[otherCat.name] then
-                    for _, entry in ipairs(matchingOther) do
+                if self.expanded[discoveredCat.name] then
+                    for _, entry in ipairs(matchingDiscovered) do
                         self.flatList[#self.flatList + 1] = {
                             type = ROW_EVENT,
                             event = entry.event,
                             desc = entry.desc,
-                            cat = otherCat,
+                            cat = discoveredCat,
                         }
                     end
                 end
@@ -307,6 +302,7 @@ function Filter:Create(parent)
     local function SetupCheckboxClick(row)
         if row.cbBtn then return end
         local cbBtn = CreateFrame("Button", nil, row)
+        cbBtn:RegisterForClicks("LeftButtonUp")
         cbBtn:SetSize(16, 16)
         cbBtn:SetPoint("CENTER", row.cbBg, "CENTER", 0, 0)
         cbBtn:SetScript("OnClick", function()
@@ -470,10 +466,11 @@ function Filter:Create(parent)
     -- Button handlers
     ---------------------------------------------------------------------------
     allOnBtn:SetScript("OnClick", function()
-        local categories = DF.EventIndex:GetCategories()
-        for _, cat in ipairs(categories) do
-            for _, entry in ipairs(cat.events) do
-                DF.EventMonitorLog:SetBlacklisted(entry.event, false)
+        for _, data in ipairs(panel.flatList) do
+            if data.type == ROW_CATEGORY then
+                for _, entry in ipairs(data.cat.events) do
+                    DF.EventMonitorLog:SetBlacklisted(entry.event, false)
+                end
             end
         end
         panel:Refresh()
@@ -481,10 +478,11 @@ function Filter:Create(parent)
     end)
 
     allOffBtn:SetScript("OnClick", function()
-        local categories = DF.EventIndex:GetCategories()
-        for _, cat in ipairs(categories) do
-            for _, entry in ipairs(cat.events) do
-                DF.EventMonitorLog:SetBlacklisted(entry.event, true)
+        for _, data in ipairs(panel.flatList) do
+            if data.type == ROW_CATEGORY then
+                for _, entry in ipairs(data.cat.events) do
+                    DF.EventMonitorLog:SetBlacklisted(entry.event, true)
+                end
             end
         end
         panel:Refresh()
@@ -499,6 +497,7 @@ function Filter:Create(parent)
             for _, cat in ipairs(categories) do
                 panel.expanded[cat.name] = true
             end
+            panel.expanded["Discovered"] = true
         end
         panel:Refresh()
     end)

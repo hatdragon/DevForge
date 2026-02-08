@@ -37,6 +37,7 @@ function DF.Widgets:CreateDropDown()
 
     -- Close on outside click
     local blocker = CreateFrame("Button", nil, UIParent)
+    blocker:RegisterForClicks("LeftButtonUp")
     blocker:SetAllPoints(UIParent)
     blocker:SetFrameStrata("FULLSCREEN")
     blocker:Hide()
@@ -51,6 +52,7 @@ function DF.Widgets:CreateDropDown()
         end
 
         local row = CreateFrame("Button", nil, frame)
+        row:RegisterForClicks("LeftButtonUp")
         row:SetHeight(ROW_HEIGHT)
 
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -157,6 +159,12 @@ function DF.Widgets:CreateDropDown()
             local cursorX, cursorY = GetCursorPosition()
             local scale = frame:GetEffectiveScale()
             frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", cursorX / scale, cursorY / scale)
+        end
+
+        -- Raise above the anchor's parent so the menu isn't occluded by sibling widgets
+        if anchor then
+            local level = anchor:GetFrameLevel() + 10
+            frame:SetFrameLevel(level)
         end
 
         blocker:Show()

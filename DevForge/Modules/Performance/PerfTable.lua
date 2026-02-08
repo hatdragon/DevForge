@@ -45,6 +45,7 @@ function PerfTable:Create(parent)
     local headerBtns = {}
     for i, col in ipairs(COLUMNS) do
         local btn = CreateFrame("Button", nil, header)
+        btn:RegisterForClicks("LeftButtonUp")
         btn:SetHeight(tbl.headerHeight)
 
         local text = btn:CreateFontString(nil, "OVERLAY")
@@ -278,7 +279,11 @@ function PerfTable:Create(parent)
                     local text = ""
                     if col.key == "name" then
                         text = val or ""
-                        ft:SetTextColor(0.83, 0.83, 0.83, 1)
+                        if snap.virtual then
+                            ft:SetTextColor(0.9, 0.75, 0.3, 1)
+                        else
+                            ft:SetTextColor(0.83, 0.83, 0.83, 1)
+                        end
                     elseif col.key == "memory" or col.key == "memoryPeak" then
                         text = format("%.0f", val or 0)
                         ft:SetTextColor(unpack(memColor))

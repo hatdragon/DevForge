@@ -9,20 +9,43 @@ DF.frame = CreateFrame("Frame")
 DF.frame:RegisterEvent("ADDON_LOADED")
 DF.frame:RegisterEvent("PLAYER_LOGOUT")
 
+-- After /reload, named frames survive but all Lua scripts are wiped.
+-- Hide the stale window immediately so the user can't interact with a
+-- scriptless zombie.  We record whether it was showing so we can reopen
+-- after the fresh UI is built.
+local staleWasShown = false
+do
+    local stale = _G["DevForgeMainWindow"]
+    if stale then
+        staleWasShown = stale:IsShown()
+        stale:Hide()
+        stale:EnableMouse(false)
+    end
+end
+
 DF.frame:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         local name = ...
         if name == ADDON_NAME then
             DF.frame:UnregisterEvent("ADDON_LOADED")
             if DF.Schema then
-                DF.Schema:Init()
+                local ok, err = pcall(DF.Schema.Init, DF.Schema)
+                if not ok then print("|cFFFF4444DevForge: Schema:Init() error:|r " .. tostring(err)) end
             end
             -- Install error handler hooks immediately so no errors are missed
             if DF.ErrorHandler then
-                DF.ErrorHandler:Init()
+                local ok, err = pcall(DF.ErrorHandler.Init, DF.ErrorHandler)
+                if not ok then print("|cFFFF4444DevForge: ErrorHandler:Init() error:|r " .. tostring(err)) end
             end
             if DF.EventBus then
                 DF.EventBus:Fire("DF_ADDON_LOADED")
+            end
+
+            -- If the window was open before /reload, reopen it seamlessly
+            if staleWasShown then
+                C_Timer.After(0, function()
+                    DF:Toggle()
+                end)
             end
         end
     elseif event == "PLAYER_LOGOUT" then

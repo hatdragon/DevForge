@@ -25,6 +25,7 @@ function SnipList:Create(parent)
         end
 
         local row = CreateFrame("Button", nil, self.pane:GetContent())
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row:SetHeight(ROW_HEIGHT)
 
         -- Selection highlight
@@ -68,7 +69,13 @@ function SnipList:Create(parent)
         row:SetScript("OnLeave", function(self)
             self.hl:Hide()
         end)
-        row:SetScript("OnClick", function(self)
+        row:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                if list.onRightClick then
+                    list.onRightClick(self.snippetId, self.isProjectRow)
+                end
+                return
+            end
             if self.isProjectRow then
                 -- Toggle expand/collapse
                 local id = self.snippetId
@@ -211,6 +218,14 @@ function SnipList:Create(parent)
 
     function list:SetOnSelect(callback)
         self.onSelect = callback
+    end
+
+    function list:SetOnRightClick(callback)
+        self.onRightClick = callback
+    end
+
+    function list:SetExpanded(id, state)
+        self.expanded[id] = state
     end
 
     function list:SetSelected(id)

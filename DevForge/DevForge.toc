@@ -1,9 +1,9 @@
 ## Interface: 120000, 120001
 ## Title: DevForge
-## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, performance
+## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, sounds, performance
 ## Author: hatdragon
 ## Contributors: 
-## Version: r1.0.10
+## Version: r1.0.11
 
 ## SavedVariables: DevForgeDB
 ## IconTexture: Interface\Icons\INV_Gizmo_02
@@ -133,3 +133,10 @@ Modules\TextureBrowser\TextureIconData.lua
 Modules\TextureBrowser\TextureRuntime.lua
 Modules\TextureBrowser\TextureIndex.lua
 Modules\TextureBrowser\TextureBrowser.lua
+
+# Sound Browser Module
+Modules\SoundBrowser\SoundKitData.lua
+Modules\SoundBrowser\SoundFileData.lua
+Modules\SoundBrowser\SoundRuntime.lua
+Modules\SoundBrowser\SoundIndex.lua
+Modules\SoundBrowser\SoundBrowser.lua

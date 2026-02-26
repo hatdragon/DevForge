@@ -5,7 +5,7 @@ DF.Schema = {}
 local Schema = DF.Schema
 
 local DEFAULTS = {
-    dbVersion      = 3,
+    dbVersion      = 4,
     windowX        = nil,
     windowY        = nil,
     windowW        = nil,
@@ -25,6 +25,8 @@ local DEFAULTS = {
     lastMacroIndex = nil,
     textureFavorites = {},
     textureRecent = {},
+    soundFavorites = {},
+    soundRecent = {},
     -- IDE layout state
     sidebarWidth    = 220,
     sidebarCollapsed = false,
@@ -79,6 +81,13 @@ function Schema:Migrate(db)
         -- Snippet Editor sidebar tab preference
         if db.snippetSidebarTab == nil then db.snippetSidebarTab = "snippets" end
         db.dbVersion = 3
+    end
+
+    if version < 4 then
+        -- Sound Browser favorites/recent
+        if db.soundFavorites == nil then db.soundFavorites = {} end
+        if db.soundRecent == nil then db.soundRecent = {} end
+        db.dbVersion = 4
     end
 end
 

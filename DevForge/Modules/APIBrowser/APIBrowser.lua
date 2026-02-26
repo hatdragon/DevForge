@@ -81,19 +81,34 @@ DF.ModuleSystem:Register("APIBrowser", function(sidebarParent, editorParent)
 
         -- Build arguments with safe placeholder values
         local args = {}
+        local function ArgPlaceholder(arg)
+            local argType = arg.Type or "any"
+            local argName = arg.Name
+            -- Use the documented default value when available
+            if arg.Default ~= nil then
+                local def = tostring(arg.Default)
+                if argType == "bool" then
+                    return def
+                elseif argType == "string" or argType == "cstring" then
+                    return '"' .. def .. '"'
+                else
+                    return def .. " --[[" .. argName .. "]]"
+                end
+            end
+            if argType == "string" or argType == "cstring" then
+                return '"' .. (argName or "str") .. '"'
+            elseif argType == "number" or argType == "luaIndex" or argType == "uiMapID" then
+                return "0"
+            elseif argType == "bool" then
+                return "true"
+            else
+                return "nil --[[" .. (argName or "arg") .. ": " .. argType .. "]]"
+            end
+        end
+
         if doc.Arguments then
             for _, arg in ipairs(doc.Arguments) do
-                local argType = arg.Type or "any"
-                if argType == "string" or argType == "cstring" then
-                    args[#args + 1] = '"' .. (arg.Name or "str") .. '"'
-                elseif argType == "number" or argType == "luaIndex" or argType == "uiMapID" then
-                    args[#args + 1] = "0"
-                elseif argType == "bool" then
-                    args[#args + 1] = "true"
-                else
-                    -- Use nil with a type hint comment so the code is runnable
-                    args[#args + 1] = "nil --[[" .. (arg.Name or "arg") .. ": " .. argType .. "]]"
-                end
+                args[#args + 1] = ArgPlaceholder(arg)
             end
         end
 

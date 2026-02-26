@@ -17,6 +17,7 @@ local MODULE_ICONS = {
     { name = "Inspector",      atlas = "Crosshair_Inspect_32",      group = "inspect" },
     { name = "TableViewer",    atlasOn = "common-icon-visual", atlasOff = "common-icon-visual-disabled", group = "inspect" },
     { name = "TextureBrowser", atlas = "Crosshair_Transmogrify_32", group = "inspect" },
+    { name = "SoundBrowser",  atlas = "common-icon-sound-pressed",  group = "inspect" },
     -- Reference: browsing data
     { name = "APIBrowser",     atlas = "crosshair_speak_32",        group = "reference" },
     { name = "CVarViewer",     atlas = "Adventure-Mission-Silver-Dragon", group = "reference" },

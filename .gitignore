@@ -1,3 +1,6 @@
+# Wago updater
+.wago
+
 # Compiled Lua sources
 luac.out
 

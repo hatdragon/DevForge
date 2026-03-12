@@ -3,10 +3,11 @@
 ## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, sounds, performance
 ## Author: hatdragon
 ## Contributors: 
-## Version: r1.0.11
+## Version: r1.0.12
 
 ## SavedVariables: DevForgeDB
 ## IconTexture: Interface\Icons\INV_Gizmo_02
+## X-BugGrabber-Display: DevForge
 
 ## Category: Development Tools
 ## Category-deDE: Entwicklungstools

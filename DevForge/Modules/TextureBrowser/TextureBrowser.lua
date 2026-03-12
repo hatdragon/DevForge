@@ -77,11 +77,9 @@ DF.ModuleSystem:Register("TextureBrowser", function(sidebarParent, editorParent)
     previewSizeLabel:SetTextColor(0.5, 0.5, 0.5, 1)
 
     local previewChecker = previewPopup:CreateTexture(nil, "BORDER")
-    previewChecker:SetPoint("TOP", previewSizeLabel, "BOTTOM", 0, -6)
     previewChecker:SetColorTexture(0.15, 0.15, 0.15, 1)
 
     local previewTex = previewPopup:CreateTexture(nil, "ARTWORK")
-    previewTex:SetPoint("TOP", previewSizeLabel, "BOTTOM", 0, -6)
 
     local PREVIEW_MAX = 512
     local PREVIEW_PAD = 16
@@ -118,8 +116,15 @@ DF.ModuleSystem:Register("TextureBrowser", function(sidebarParent, editorParent)
         previewTex:SetSize(dispW, dispH)
         previewChecker:SetSize(dispW, dispH)
 
+        -- Center texture and checker horizontally in the popup, below the header
+        local headerH = 60 -- path + size label + spacing
+        previewTex:ClearAllPoints()
+        previewChecker:ClearAllPoints()
+        previewTex:SetPoint("TOP", previewPopup, "TOP", 0, -headerH)
+        previewChecker:SetPoint("TOP", previewPopup, "TOP", 0, -headerH)
+
         local frameW = math.max(240, dispW + PREVIEW_PAD * 2)
-        local frameH = dispH + 60 + PREVIEW_PAD
+        local frameH = dispH + headerH + PREVIEW_PAD
         previewPopup:SetSize(frameW, frameH)
         previewPopup:ClearAllPoints()
         previewPopup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)

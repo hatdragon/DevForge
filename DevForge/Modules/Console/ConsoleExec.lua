@@ -119,28 +119,47 @@ function Exec:Execute(code, printCapture)
 
     -- Captured print output
     local prints = {}
-
-    -- Hook print temporarily (always restore via the function-scoped origPrint)
-    local origPrint = print
     local hookPrint = (printCapture ~= false)
+    local doneExecuting = false
+
+    -- Build a custom print that captures output into our prints table.
+    -- During synchronous execution, output is stored for FormatResults.
+    -- After Execute returns (deferred callbacks like C_Timer), output is
+    -- sent directly to the bottom panel via DF_OUTPUT_LINE.
+    local capturedPrint
     if hookPrint then
-        print = function(...)
+        capturedPrint = function(...)
             local parts = {}
             for i = 1, select("#", ...) do
                 parts[i] = tostring(select(i, ...))
             end
-            prints[#prints + 1] = table.concat(parts, "    ")
+            local line = table.concat(parts, "    ")
+            if not doneExecuting then
+                prints[#prints + 1] = line
+            elseif DF.EventBus then
+                DF.EventBus:Fire("DF_OUTPUT_LINE", { text = line })
+            end
         end
     end
 
-    -- Wrapped execution: guarantees print is restored even on unexpected errors
+    local env = setmetatable({ DF = DF, DevForge = DF }, { __index = _G, __newindex = _G })
+
+    -- Stash captured print in a temp global so loadstring'd code can grab it
+    -- via a chunk-level local.  Varargs approach (select(1,...)) is unreliable
+    -- in WoW 12.x loadstring chunks.
+    local preamble = capturedPrint and "local print = rawget(_G,'_DF_CAPTURED_PRINT') or print; " or ""
+    if capturedPrint then
+        rawset(_G, "_DF_CAPTURED_PRINT", capturedPrint)
+    end
+
+    -- Wrapped execution
     local function DoExecute()
         local success, results, err
 
         -- Try as expression first (return ...)
-        local exprFn, exprErr = loadstring("return " .. evalCode)
+        local exprFn, exprErr = loadstring(preamble .. "return " .. evalCode, "=(console)")
         if exprFn then
-            setfenv(exprFn, setmetatable({ DF = DF, DevForge = DF }, { __index = _G, __newindex = _G }))
+            setfenv(exprFn, env)
 
             local retValues = { xpcall(exprFn, ConsoleErrorHandler) }
             if retValues[1] then
@@ -155,9 +174,9 @@ function Exec:Execute(code, printCapture)
             end
         else
             -- Try as statement
-            local stmtFn, stmtErr = loadstring(evalCode)
+            local stmtFn, stmtErr = loadstring(preamble .. evalCode, "=(console)")
             if stmtFn then
-                setfenv(stmtFn, setmetatable({ DF = DF, DevForge = DF }, { __index = _G, __newindex = _G }))
+                setfenv(stmtFn, env)
 
                 local retValues = { xpcall(stmtFn, ConsoleErrorHandler) }
                 if retValues[1] then
@@ -181,10 +200,10 @@ function Exec:Execute(code, printCapture)
 
     local execOk, success, results, err = pcall(DoExecute)
 
-    -- ALWAYS restore print, no matter what happened above
-    if hookPrint then
-        print = origPrint
-    end
+    -- Mark synchronous execution done. Any deferred callbacks (C_Timer, etc.)
+    -- that call print will now route directly to DF_OUTPUT_LINE.
+    doneExecuting = true
+    rawset(_G, "_DF_CAPTURED_PRINT", nil)
 
     if not execOk then
         -- DoExecute itself errored (shouldn't happen, but safety net)
@@ -215,21 +234,30 @@ function Exec:ExecuteFile(code, ...)
     local prints = {}
     local args = { ... }
     local nArgs = select("#", ...)
+    local doneExecuting = false
 
-    local origPrint = print
-    print = function(...)
+    local capturedPrint = function(...)
         local parts = {}
         for i = 1, select("#", ...) do
             parts[i] = tostring(select(i, ...))
         end
-        prints[#prints + 1] = table.concat(parts, "    ")
+        local line = table.concat(parts, "    ")
+        if not doneExecuting then
+            prints[#prints + 1] = line
+        elseif DF.EventBus then
+            DF.EventBus:Fire("DF_OUTPUT_LINE", { text = line })
+        end
     end
 
     local success, results, err
 
-    local fn, loadErr = loadstring(code)
+    -- Stash captured print in a temp global so the chunk-level local can grab
+    -- it.  Varargs are reserved for the file's own arguments (addon name, etc).
+    rawset(_G, "_DF_CAPTURED_PRINT", capturedPrint)
+    local fn, loadErr = loadstring("local print = rawget(_G,'_DF_CAPTURED_PRINT') or print; " .. code, "=(snippet)")
     if fn then
-        setfenv(fn, setmetatable({ DF = DF, DevForge = DF }, { __index = _G, __newindex = _G }))
+        local env = setmetatable({ DF = DF, DevForge = DF }, { __index = _G, __newindex = _G })
+        setfenv(fn, env)
 
         local retValues = { xpcall(function() return fn(unpack(args, 1, nArgs)) end, ConsoleErrorHandler) }
         if retValues[1] then
@@ -246,8 +274,8 @@ function Exec:ExecuteFile(code, ...)
         success = false
         err = tostring(loadErr)
     end
-
-    print = origPrint
+    doneExecuting = true
+    rawset(_G, "_DF_CAPTURED_PRINT", nil)
 
     return {
         success = success,

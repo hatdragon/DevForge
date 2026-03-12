@@ -154,9 +154,9 @@ function Handler:Init()
 
     -- Hook error capture
     if _G.BugGrabber then
-        -- BugGrabber is present: use its callback system
+        -- BugGrabber is present: use its callback system (CallbackHandler-1.0 API)
         if BugGrabber.RegisterCallback then
-            BugGrabber:RegisterCallback("BugGrabber_BugGrabbed", OnBugGrabbed)
+            BugGrabber.RegisterCallback(Handler, "BugGrabber_BugGrabbed", OnBugGrabbed)
         elseif BugGrabber.RegisterAddonActionCallback then
             BugGrabber.RegisterAddonActionCallback(OnBugGrabbed)
         end
@@ -261,6 +261,20 @@ function Handler:Save()
         save[#save + 1] = errors[i]
     end
     DevForgeDB.errors = save
+end
+
+-- BugGrabber display addon interface: FormatError must be on the global
+-- table named in ## X-BugGrabber-Display (i.e. _G["DevForge"])
+function DF:FormatError(err)
+    if not err then return "" end
+    local msg = tostring(err.message or "")
+    if err.stack then
+        msg = msg .. "\n" .. tostring(err.stack)
+    end
+    if err.locals and err.locals ~= "" then
+        msg = msg .. "\n\nLocals:\n" .. tostring(err.locals)
+    end
+    return msg
 end
 
 -- Persist on logout

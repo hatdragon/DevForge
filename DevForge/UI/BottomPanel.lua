@@ -125,6 +125,34 @@ function BottomPanel:Create(parent)
         panel.tabs[def.id] = tabBtns[i]
     end
 
+    -- Clear button (right side of tab bar)
+    local clearBtn = CreateFrame("Button", nil, tabBar)
+    clearBtn:RegisterForClicks("LeftButtonUp")
+    clearBtn:SetSize(40, L.bottomTabHeight)
+    clearBtn:SetPoint("RIGHT", -4, 0)
+
+    local clearLabel = clearBtn:CreateFontString(nil, "OVERLAY")
+    clearLabel:SetFontObject(DF.Theme:UIFont())
+    clearLabel:SetPoint("CENTER", 0, 0)
+    clearLabel:SetText("Clear")
+    clearLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    clearBtn:SetScript("OnEnter", function()
+        clearLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+    end)
+    clearBtn:SetScript("OnLeave", function()
+        clearLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+    end)
+    clearBtn:SetScript("OnClick", function()
+        if panel.activeTab == "output" then
+            panel:ClearOutput()
+        elseif panel.activeTab == "errors" then
+            DF.EventBus:Fire("DF_ERRORS_CLEARED")
+        elseif panel.activeTab == "events" then
+            DF.EventBus:Fire("DF_EVENTS_CLEARED")
+        end
+    end)
+
     ---------------------------------------------------------------------------
     -- Content panes
     ---------------------------------------------------------------------------

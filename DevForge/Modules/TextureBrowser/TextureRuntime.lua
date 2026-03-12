@@ -62,7 +62,13 @@ function TR:Scan(onProgress, onComplete)
                             if isTexture then
                                 -- Try GetAtlas first
                                 local atlasOk, atlasInfo = pcall(function() return region:GetAtlas() end)
-                                if atlasOk and atlasInfo and atlasInfo ~= "" then
+                                -- atlasInfo can be a secret string in 12.0+; guard comparisons with pcall
+                                local atlasUsable = false
+                                if atlasOk and atlasInfo then
+                                    local cmpOk, cmpResult = pcall(function() return atlasInfo ~= "" end)
+                                    atlasUsable = cmpOk and cmpResult
+                                end
+                                if atlasUsable then
                                     if not seenPaths[atlasInfo] then
                                         seenPaths[atlasInfo] = true
                                         resultCount = resultCount + 1
@@ -77,15 +83,28 @@ function TR:Scan(onProgress, onComplete)
 
                                 -- Try GetTexture for file path/ID
                                 local texPathOk, texPath = pcall(function() return region:GetTexture() end)
-                                if texPathOk and texPath and texPath ~= "" then
-                                    local pathKey = tostring(texPath)
-                                    if not seenPaths[pathKey] then
-                                        seenPaths[pathKey] = true
+                                -- texPath can be a secret string in 12.0+; guard all operations
+                                local texUsable = false
+                                if texPathOk and texPath then
+                                    local cmpOk, cmpResult = pcall(function() return texPath ~= "" end)
+                                    texUsable = cmpOk and cmpResult
+                                end
+                                if texUsable then
+                                    -- texPath may be a secret value in 12.0+; table indexing
+                                    -- with a secret key throws "table index is secret".
+                                    -- Wrap lookup+store in pcall to skip secret values.
+                                    local seenOk, alreadySeen = pcall(function() return seenPaths[texPath] end)
+                                    if seenOk and not alreadySeen then
+                                        pcall(function() seenPaths[texPath] = true end)
                                         local displayName
                                         if type(texPath) == "number" then
                                             displayName = "FileID:" .. texPath
                                         else
-                                            displayName = tostring(texPath):match("([^\\]+)$") or tostring(texPath)
+                                            local nameOk, nameVal = pcall(function()
+                                                local s = tostring(texPath)
+                                                return s:match("([^\\]+)$") or s
+                                            end)
+                                            displayName = nameOk and nameVal or "Unknown"
                                         end
                                         resultCount = resultCount + 1
                                         results[resultCount] = {

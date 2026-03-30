@@ -10,20 +10,21 @@ local ActivityBar = DF.UI.ActivityBar
 -- fileID entries use desaturation + vertex color dimming
 local MODULE_ICONS = {
     -- Code: writing & running
-    { name = "Console",        atlas = "Crosshair_repairnpc_32",    group = "code" },
-    { name = "SnippetEditor",  atlas = "Crosshair_Repair_32",       group = "code" },
-    { name = "MacroEditor",    fileID = 136377,                      group = "code" },
+    { name = "Console",        atlas = "Crosshair_repairnpc_32",    fileID = 134327, group = "code" },     -- INV_Scroll_02 (scroll/REPL)
+    { name = "SnippetEditor",  atlas = "Crosshair_Repair_32",       fileID = 133741, group = "code" },     -- INV_Misc_Book_09 (book/code storage)
+    { name = "MacroEditor",    fileID = 136377,                      group = "code" },                      -- Ability_Marksmanship
     -- Inspect: looking at things
-    { name = "Inspector",      atlas = "Crosshair_Inspect_32",      group = "inspect" },
-    { name = "TableViewer",    atlasOn = "common-icon-visual", atlasOff = "common-icon-visual-disabled", group = "inspect" },
-    { name = "TextureBrowser", atlas = "Crosshair_Transmogrify_32", group = "inspect" },
+    { name = "Inspector",      atlas = "Crosshair_Inspect_32",      fileID = 134442, group = "inspect" },  -- INV_Misc_Spyglass_03 (magnifier)
+    { name = "TableViewer",    atlasOn = "common-icon-visual", atlasOff = "common-icon-visual-disabled", fileID = 134332, group = "inspect" }, -- INV_Scroll_07 (data listing)
+    { name = "TextureBrowser", atlas = "Crosshair_Transmogrify_32", fileID = 132319, group = "inspect" },  -- Ability_Spy (eye/viewing)
+    { name = "SoundBrowser",  atlas = "common-icon-sound-pressed",  fileID = 133706, group = "inspect" },  -- INV_Misc_Bell_01 (bell/sound)
     -- Reference: browsing data
-    { name = "APIBrowser",     atlas = "crosshair_speak_32",        group = "reference" },
-    { name = "CVarViewer",     atlas = "Adventure-Mission-Silver-Dragon", group = "reference" },
-    { name = "EventMonitor",   atlas = "Crosshair_mail_32",         group = "reference" },
+    { name = "APIBrowser",     atlas = "crosshair_speak_32",        fileID = 133739, group = "reference" },-- INV_Misc_Book_07 (blue book/docs)
+    { name = "CVarViewer",     atlas = "Adventure-Mission-Silver-Dragon", fileID = 136243, group = "reference" }, -- Trade_Engineering (gear/settings)
+    { name = "EventMonitor",   atlas = "Crosshair_mail_32",         fileID = 136048, group = "reference" },-- Spell_Nature_Lightning (live events)
     -- Diagnostics
-    { name = "ErrorHandler",   atlas = "crosshair_crosshairs_32",   group = "diag" },
-    { name = "Performance",    atlas = "crosshair_track_32",        group = "diag" },
+    { name = "ErrorHandler",   atlas = "crosshair_crosshairs_32",   fileID = 136168, group = "diag" },     -- Spell_Fire_SealOfFire (warning)
+    { name = "Performance",    atlas = "crosshair_track_32",        fileID = 134377, group = "diag" },     -- INV_Misc_PocketWatch_02 (stopwatch)
 }
 
 function ActivityBar:Create(parent)
@@ -62,6 +63,7 @@ function ActivityBar:Create(parent)
         lastGroup = def.group
 
         local btn = CreateFrame("Button", nil, frame)
+        btn:RegisterForClicks("LeftButtonUp")
         btn:SetSize(L.activityBarWidth, L.activityBtnHeight)
         btn:SetPoint("TOPLEFT", 0, yOffset)
 
@@ -76,23 +78,30 @@ function ActivityBar:Create(parent)
         local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetSize(L.activityIconSize, L.activityIconSize)
         icon:SetPoint("CENTER", 1, 0) -- offset 1px right to account for accent bar
-        if def.fileID then
+        local iconSet = false
+        if not def.fileID or def.atlas then
+            -- Try atlas first (preferred on Retail)
+            if def.atlas then
+                local atlasOk = pcall(function() icon:SetAtlas(def.atlas) end)
+                if atlasOk and icon:GetAtlas() then
+                    iconSet = true
+                end
+            elseif def.atlasOff then
+                local atlasOk = pcall(function() icon:SetAtlas(def.atlasOff) end)
+                if atlasOk and icon:GetAtlas() then
+                    iconSet = true
+                end
+            end
+        end
+        if not iconSet and def.fileID then
             icon:SetTexture(def.fileID)
+            iconSet = true
+        end
+        if iconSet then
             icon:SetDesaturated(true)
             icon:SetVertexColor(0.6, 0.6, 0.6)
-        elseif def.atlas then
-            local atlasOk = pcall(function() icon:SetAtlas(def.atlas) end)
-            if atlasOk then
-                icon:SetDesaturated(true)
-                icon:SetVertexColor(0.6, 0.6, 0.6)
-            else
-                icon:SetColorTexture(0.3, 0.3, 0.3, 0.8)
-            end
         else
-            local atlasOk = pcall(function() icon:SetAtlas(def.atlasOff) end)
-            if not atlasOk then
-                icon:SetColorTexture(0.3, 0.3, 0.3, 0.8)
-            end
+            icon:SetColorTexture(0.3, 0.3, 0.3, 0.8)
         end
 
         -- Hover highlight
@@ -132,11 +141,14 @@ function ActivityBar:Create(parent)
             DF.ModuleSystem:Activate(def.name)
         end)
 
+        -- Track whether atlas was actually used (may fail on Classic)
+        local usedAtlas = iconSet and not def.fileID or (iconSet and icon:GetAtlas() and icon:GetAtlas() ~= "")
         local entry = {
             name = def.name,
             btn = btn,
             accent = accent,
             icon = icon,
+            usedAtlas = usedAtlas,
             fileID = def.fileID,
             atlas = def.atlas,
             atlasOff = def.atlasOff,
@@ -156,19 +168,19 @@ function ActivityBar:Create(parent)
         for _, entry in ipairs(bar.ordered) do
             if entry.name == moduleName then
                 entry.accent:Show()
-                if entry.fileID or entry.atlas then
+                if entry.usedAtlas and entry.atlasOn then
+                    pcall(function() entry.icon:SetAtlas(entry.atlasOn) end)
+                else
                     entry.icon:SetDesaturated(false)
                     entry.icon:SetVertexColor(1, 1, 1)
-                else
-                    pcall(function() entry.icon:SetAtlas(entry.atlasOn) end)
                 end
             else
                 entry.accent:Hide()
-                if entry.fileID or entry.atlas then
+                if entry.usedAtlas and entry.atlasOff then
+                    pcall(function() entry.icon:SetAtlas(entry.atlasOff) end)
+                else
                     entry.icon:SetDesaturated(true)
                     entry.icon:SetVertexColor(0.6, 0.6, 0.6)
-                else
-                    pcall(function() entry.icon:SetAtlas(entry.atlasOff) end)
                 end
             end
         end

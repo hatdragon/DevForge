@@ -110,7 +110,8 @@ local function GenerateTOC(state)
     local function add(s) lines[#lines + 1] = s end
 
     local name = state.addonName ~= "" and state.addonName or "MyAddon"
-    add("## Interface: 120000")
+    local interfaceVersion = DF.IsRetail and "120000, 120001" or DF.IsClassicEra and "11508" or "50503"
+    add("## Interface: " .. interfaceVersion)
     add("## Title: " .. name)
     add("## Notes: " .. (state.description ~= "" and state.description or name))
     add("## Author: " .. (state.author ~= "" and state.author or "Unknown"))
@@ -239,6 +240,13 @@ end
 local function GetDialog()
     if dialog then return dialog end
 
+    -- Clean up stale named frame from previous /reload
+    local stale = _G["DevForgeAddonScaffold"]
+    if stale then
+        stale:Hide(); stale:EnableMouse(false)
+        for _, c in pairs({stale:GetChildren()}) do c:Hide(); c:EnableMouse(false) end
+    end
+
     local frame = CreateFrame("Frame", "DevForgeAddonScaffold", UIParent, "BackdropTemplate")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetSize(480, 480)
@@ -248,7 +256,9 @@ local function GetDialog()
     frame:EnableMouse(true)
     frame:Hide()
     DF.Theme:ApplyDialogChrome(frame)
-    tinsert(UISpecialFrames, "DevForgeAddonScaffold")
+    if not tContains(UISpecialFrames, "DevForgeAddonScaffold") then
+        tinsert(UISpecialFrames, "DevForgeAddonScaffold")
+    end
 
     -- Title bar
     local titleBar = CreateFrame("Frame", nil, frame)

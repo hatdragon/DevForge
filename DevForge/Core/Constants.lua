@@ -90,8 +90,12 @@ DF.Layout = {
     bottomCollapseH = 20,
 }
 
+DF.IsRetail     = DF.IsRetail ~= nil and DF.IsRetail or (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
+DF.IsClassicEra = DF.IsClassicEra ~= nil and DF.IsClassicEra or (WOW_PROJECT_ID == WOW_PROJECT_CLASSIC)
+DF.IsClassic    = DF.IsClassic ~= nil and DF.IsClassic or not DF.IsRetail
+
 DF.ADDON_NAME    = "DevForge"
-DF.ADDON_VERSION = "1.0.0"
+DF.ADDON_VERSION = C_AddOns.GetAddOnMetadata("DevForge", "Version") or "unknown"
 DF.MAX_HISTORY   = 200
 DF.PRETTY_DEPTH  = 3
 DF.DEBOUNCE_MS   = 200

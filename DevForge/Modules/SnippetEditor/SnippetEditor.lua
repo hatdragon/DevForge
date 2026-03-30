@@ -9,6 +9,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     local editor = {}
     local currentSnippetId = nil
+    local ranProjects = {}  -- [projectId] = true for projects that have been run
 
     ---------------------------------------------------------------------------
     -- Sidebar: toggle bar + snippet list + template browser
@@ -26,6 +27,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     local function CreateToggleButton(parent, text, width)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:RegisterForClicks("LeftButtonUp")
         btn:SetSize(width, 20)
         btn:SetBackdrop({
             bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -75,7 +77,79 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     snippetsContainer:SetPoint("BOTTOMRIGHT", 0, 0)
 
     local snippetList = DF.SnippetList:Create(snippetsContainer)
-    snippetList.frame:SetAllPoints(snippetsContainer)
+    snippetList.frame:SetPoint("TOPLEFT", snippetsContainer, "TOPLEFT", 0, 0)
+    snippetList.frame:SetPoint("BOTTOMRIGHT", snippetsContainer, "BOTTOMRIGHT", 0, 0)
+
+    -- Running-projects panel (bottom of sidebar, hidden until first run)
+    local runPanel = CreateFrame("Frame", nil, snippetsContainer, "BackdropTemplate")
+    runPanel:SetPoint("BOTTOMLEFT", 0, 0)
+    runPanel:SetPoint("BOTTOMRIGHT", 0, 0)
+    runPanel:Hide()
+    local runPanelBg = runPanel:CreateTexture(nil, "BACKGROUND")
+    runPanelBg:SetAllPoints()
+    runPanelBg:SetColorTexture(0.15, 0.15, 0.18, 1)
+
+    local runPanelSep = runPanel:CreateTexture(nil, "OVERLAY")
+    runPanelSep:SetHeight(1)
+    runPanelSep:SetPoint("TOPLEFT", 0, 0)
+    runPanelSep:SetPoint("TOPRIGHT", 0, 0)
+    runPanelSep:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
+    local runPanelHeader = runPanel:CreateFontString(nil, "OVERLAY")
+    runPanelHeader:SetFontObject(DF.Theme:UIFont())
+    runPanelHeader:SetPoint("TOPLEFT", 6, -5)
+    runPanelHeader:SetTextColor(0.9, 0.75, 0.3, 1)
+    runPanelHeader:SetText("Running")
+
+    local runPanelRows = {}
+
+    local runPanelReload = DF.Widgets:CreateButton(runPanel, "Reload UI", 65)
+    runPanelReload:SetPoint("BOTTOMLEFT", 6, 6)
+    runPanelReload:SetScript("OnClick", function() ReloadUI() end)
+
+    local function RefreshRunPanel()
+        -- Collect running project names
+        local entries = {}
+        for projectId in pairs(ranProjects) do
+            local proj = DF.SnippetStore:Get(projectId)
+            if proj then
+                entries[#entries + 1] = proj.name or "Untitled"
+            end
+        end
+        table.sort(entries)
+
+        if #entries == 0 then
+            runPanel:Hide()
+            snippetList.frame:SetPoint("BOTTOMRIGHT", snippetsContainer, "BOTTOMRIGHT", 0, 0)
+            return
+        end
+
+        -- Create/update row labels
+        for i, name in ipairs(entries) do
+            if not runPanelRows[i] then
+                local row = runPanel:CreateFontString(nil, "OVERLAY")
+                row:SetFontObject(DF.Theme:UIFont())
+                row:SetJustifyH("LEFT")
+                row:SetTextColor(0.7, 0.7, 0.7, 1)
+                runPanelRows[i] = row
+            end
+            runPanelRows[i]:SetText("  " .. name)
+            runPanelRows[i]:ClearAllPoints()
+            runPanelRows[i]:SetPoint("TOPLEFT", 6, -5 - (i * 16))
+            runPanelRows[i]:SetPoint("RIGHT", -6, 0)
+            runPanelRows[i]:Show()
+        end
+        -- Hide extra rows
+        for i = #entries + 1, #runPanelRows do
+            runPanelRows[i]:Hide()
+        end
+
+        -- header + rows + button + padding
+        local panelHeight = 10 + (#entries + 1) * 16 + 28
+        runPanel:SetHeight(panelHeight)
+        runPanel:Show()
+        snippetList.frame:SetPoint("BOTTOMRIGHT", snippetsContainer, "BOTTOMRIGHT", 0, panelHeight)
+    end
 
     -- Templates container
     local templatesContainer = CreateFrame("Frame", nil, sidebarFrame)
@@ -123,24 +197,24 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     local newBtn = DF.Widgets:CreateButton(toolbar, "+ New", 60)
     newBtn:SetPoint("LEFT", 2, 0)
 
-    local dupBtn = DF.Widgets:CreateButton(toolbar, "Duplicate", 75)
-    dupBtn:SetPoint("LEFT", newBtn, "RIGHT", 4, 0)
-
     local delBtn = DF.Widgets:CreateButton(toolbar, "Delete", 60)
-    delBtn:SetPoint("LEFT", dupBtn, "RIGHT", 4, 0)
+    delBtn:SetPoint("LEFT", newBtn, "RIGHT", 4, 0)
 
     -- Frame Builder and Scaffold buttons between Delete and Run
-    local frameBuilderBtn = DF.Widgets:CreateButton(toolbar, "Frame Builder", 95)
+    local frameBuilderBtn = DF.Widgets:CreateButton(toolbar, "Frames", 60)
     frameBuilderBtn:SetPoint("LEFT", delBtn, "RIGHT", 4, 0)
 
-    local scaffoldBtn = DF.Widgets:CreateButton(toolbar, "Scaffold", 70)
+    local scaffoldBtn = DF.Widgets:CreateButton(toolbar, "Scaffold", 65)
     scaffoldBtn:SetPoint("LEFT", frameBuilderBtn, "RIGHT", 4, 0)
 
-    local waImportBtn = DF.Widgets:CreateButton(toolbar, "WA Import", 80)
-    waImportBtn:SetPoint("LEFT", scaffoldBtn, "RIGHT", 4, 0)
+    local waImportBtn
+    if DF.IsRetail then
+        waImportBtn = DF.Widgets:CreateButton(toolbar, "WA Import", 80)
+        waImportBtn:SetPoint("LEFT", scaffoldBtn, "RIGHT", 4, 0)
+    end
 
     local runProjectBtn = DF.Widgets:CreateButton(toolbar, "Run Project", 80)
-    runProjectBtn:SetPoint("LEFT", waImportBtn, "RIGHT", 4, 0)
+    runProjectBtn:SetPoint("LEFT", waImportBtn or scaffoldBtn, "RIGHT", 4, 0)
 
     local saveBtn = DF.Widgets:CreateButton(toolbar, "Save", 55)
     saveBtn:SetPoint("RIGHT", -2, 0)
@@ -158,11 +232,42 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     emptyState:SetText("Create a snippet to get started.")
     emptyState:SetTextColor(0.5, 0.5, 0.5, 1)
 
+    -- Run-project warning banner
+    local runBanner = CreateFrame("Frame", nil, editorFrame, "BackdropTemplate")
+    runBanner:SetHeight(20)
+    runBanner:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
+    runBanner:SetPoint("TOPRIGHT", toolbar, "BOTTOMRIGHT", 0, -2)
+    runBanner:Hide()
+    local runBannerBg = runBanner:CreateTexture(nil, "BACKGROUND")
+    runBannerBg:SetAllPoints()
+    runBannerBg:SetColorTexture(0.35, 0.25, 0.05, 0.6)
+    local runBannerReload = DF.Widgets:CreateButton(runBanner, "Reload UI", 65)
+    runBannerReload:SetPoint("RIGHT", -4, 0)
+    runBannerReload:SetScript("OnClick", function() ReloadUI() end)
+
+    local runBannerText = runBanner:CreateFontString(nil, "OVERLAY")
+    runBannerText:SetFontObject(DF.Theme:UIFont())
+    runBannerText:SetPoint("LEFT", 6, 0)
+    runBannerText:SetPoint("RIGHT", runBannerReload, "LEFT", -6, 0)
+    runBannerText:SetJustifyH("LEFT")
+    runBannerText:SetTextColor(0.9, 0.75, 0.3, 1)
+    runBannerText:SetText("Re-running won't unload previous frames or state.")
+
     -- Editor content (hidden when no snippet selected)
     local editorContent = CreateFrame("Frame", nil, editorFrame)
-    editorContent:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
     editorContent:SetPoint("BOTTOMRIGHT", 0, 0)
     editorContent:Hide()
+
+    local function UpdateEditorContentAnchor()
+        editorContent:ClearAllPoints()
+        if runBanner:IsShown() then
+            editorContent:SetPoint("TOPLEFT", runBanner, "BOTTOMLEFT", 0, -2)
+        else
+            editorContent:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
+        end
+        editorContent:SetPoint("BOTTOMRIGHT", 0, 0)
+    end
+    UpdateEditorContentAnchor()
 
     -- Name input row
     local nameRow = CreateFrame("Frame", nil, editorContent)
@@ -209,6 +314,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     local function LoadSnippet(id)
         if not id then
+            runBanner:Hide()
+            UpdateEditorContentAnchor()
             editorContent:Hide()
             emptyState:Show()
             currentSnippetId = nil
@@ -217,11 +324,22 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
         local snippet = DF.SnippetStore:Get(id)
         if not snippet then
+            runBanner:Hide()
+            UpdateEditorContentAnchor()
             editorContent:Hide()
             emptyState:Show()
             currentSnippetId = nil
             return
         end
+
+        -- Show banner if this snippet belongs to any previously-run project
+        local snippetProjectId = snippet.isProject and snippet.id or snippet.parentId
+        if snippetProjectId and ranProjects[snippetProjectId] then
+            runBanner:Show()
+        else
+            runBanner:Hide()
+        end
+        UpdateEditorContentAnchor()
 
         emptyState:Hide()
         editorContent:Show()
@@ -285,13 +403,6 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     ---------------------------------------------------------------------------
     -- Toolbar button handlers
     ---------------------------------------------------------------------------
-    snippetList:SetOnSelect(function(id)
-        SaveCurrent()
-        LoadSnippet(id)
-    end)
-
-    local newMenu = DF.Widgets:CreateDropDown()
-
     local function CreateNew(parentId)
         SaveCurrent()
         local snippet = DF.SnippetStore:Create("Untitled", parentId)
@@ -299,6 +410,123 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         LoadSnippet(snippet.id)
         nameInput:SetFocus()
         nameInput:HighlightText()
+    end
+
+    snippetList:SetOnSelect(function(id)
+        SaveCurrent()
+        LoadSnippet(id)
+    end)
+
+    local contextMenu = DF.Widgets:CreateDropDown()
+
+    snippetList:SetOnRightClick(function(snippetId, isProjectRow)
+        local snippet = DF.SnippetStore:Get(snippetId)
+        if not snippet then return end
+
+        local items = {}
+        if snippet.isProject then
+            items[#items + 1] = {
+                text = "New file in " .. (snippet.name or "project"),
+                func = function()
+                    snippetList:SetExpanded(snippetId, true)
+                    CreateNew(snippetId)
+                end,
+            }
+            local childCount = #DF.SnippetStore:GetChildren(snippetId)
+            local label = "Delete project"
+            if childCount > 0 then
+                label = label .. " (" .. childCount .. " files)"
+            end
+            items[#items + 1] = {
+                text = label,
+                func = function()
+                    DF.SnippetStore:Delete(snippetId)
+                    if currentSnippetId then
+                        local cur = DF.SnippetStore:Get(currentSnippetId)
+                        if not cur then
+                            currentSnippetId = nil
+                            SelectNext()
+                        end
+                    end
+                    snippetList:Refresh()
+                end,
+            }
+        else
+            items[#items + 1] = {
+                text = "Delete snippet",
+                func = function()
+                    if currentSnippetId == snippetId then
+                        currentSnippetId = nil
+                    end
+                    DF.SnippetStore:Delete(snippetId)
+                    snippetList:Refresh()
+                    if not currentSnippetId then
+                        SelectNext()
+                    end
+                end,
+            }
+        end
+
+        contextMenu:Show(nil, items)
+    end)
+
+    local newMenu = DF.Widgets:CreateDropDown()
+
+    -- Lightweight project-name prompt (avoids StaticPopup quirks)
+    local projectPrompt = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    projectPrompt:SetFrameStrata("FULLSCREEN_DIALOG")
+    projectPrompt:SetSize(280, 80)
+    projectPrompt:SetPoint("CENTER")
+    projectPrompt:SetClampedToScreen(true)
+    projectPrompt:EnableMouse(true)
+    projectPrompt:Hide()
+    DF.Theme:ApplyDialogChrome(projectPrompt)
+
+    local ppLabel = projectPrompt:CreateFontString(nil, "OVERLAY")
+    ppLabel:SetFontObject(DF.Theme:UIFont())
+    ppLabel:SetPoint("TOPLEFT", 10, -10)
+    ppLabel:SetText("Project name:")
+    ppLabel:SetTextColor(0.65, 0.65, 0.65, 1)
+
+    local ppInput = CreateFrame("EditBox", nil, projectPrompt, "BackdropTemplate")
+    ppInput:SetPoint("TOPLEFT", 10, -28)
+    ppInput:SetPoint("RIGHT", -10, 0)
+    ppInput:SetHeight(22)
+    ppInput:SetAutoFocus(false)
+    ppInput:SetFontObject(DF.Theme:UIFont())
+    ppInput:SetTextColor(0.83, 0.83, 0.83, 1)
+    ppInput:SetMaxLetters(100)
+    DF.Theme:ApplyInputStyle(ppInput)
+
+    local ppCreate = DF.Widgets:CreateButton(projectPrompt, "Create", 60)
+    ppCreate:SetPoint("BOTTOMRIGHT", -10, 8)
+
+    local ppCancel = DF.Widgets:CreateButton(projectPrompt, "Cancel", 60)
+    ppCancel:SetPoint("RIGHT", ppCreate, "LEFT", -4, 0)
+
+    local function FinishProjectPrompt()
+        local name = ppInput:GetText()
+        if not name or name == "" then name = "Untitled Project" end
+        projectPrompt:Hide()
+        SaveCurrent()
+        local project = DF.SnippetStore:CreateProject(name)
+        snippetList:Refresh()
+        snippetList:SetExpanded(project.id, true)
+    end
+
+    ppCreate:SetScript("OnClick", FinishProjectPrompt)
+    ppCancel:SetScript("OnClick", function() projectPrompt:Hide() end)
+    ppInput:SetScript("OnEnterPressed", FinishProjectPrompt)
+    ppInput:SetScript("OnEscapePressed", function() projectPrompt:Hide() end)
+
+    projectPrompt:SetScript("OnShow", function()
+        ppInput:SetText("Untitled Project")
+        ppInput:HighlightText()
+        ppInput:SetFocus()
+    end)
+
+    local function CreateNewProject()
+        projectPrompt:Show()
     end
 
     newBtn:SetScript("OnClick", function(self)
@@ -320,25 +548,26 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             end
         end
 
-        if not projectId then
-            CreateNew(nil)
-            return
+        local items = {}
+        if projectId then
+            items[#items + 1] = { text = "New in " .. projectName, func = function() CreateNew(projectId) end }
+            items[#items + 1] = { text = "New standalone snippet", func = function() CreateNew(nil) end }
+        else
+            items[#items + 1] = { text = "New snippet", func = function() CreateNew(nil) end }
+        end
+        items[#items + 1] = { text = "New empty project", func = CreateNewProject }
+        if currentSnippetId then
+            items[#items + 1] = { text = "Duplicate current", func = function()
+                SaveCurrent()
+                local clone = DF.SnippetStore:Duplicate(currentSnippetId)
+                if clone then
+                    snippetList:Refresh()
+                    LoadSnippet(clone.id)
+                end
+            end }
         end
 
-        newMenu:Show(self, {
-            { text = "New in " .. projectName, func = function() CreateNew(projectId) end },
-            { text = "New standalone snippet", func = function() CreateNew(nil) end },
-        })
-    end)
-
-    dupBtn:SetScript("OnClick", function()
-        if not currentSnippetId then return end
-        SaveCurrent()
-        local clone = DF.SnippetStore:Duplicate(currentSnippetId)
-        if clone then
-            snippetList:Refresh()
-            LoadSnippet(clone.id)
-        end
+        newMenu:Show(self, items)
     end)
 
     delBtn:SetScript("OnClick", function()
@@ -374,22 +603,24 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         end)
     end)
 
-    waImportBtn:SetScript("OnClick", function()
-        DF.WAImporter:Show(function(files, projectName)
-            SaveCurrent()
-            local project = DF.SnippetStore:CreateProject(projectName)
-            for _, file in ipairs(files) do
-                local s = DF.SnippetStore:Create(file.name, project.id)
-                DF.SnippetStore:Save(s.id, s.name, file.code)
-            end
-            SetSidebarTab("snippets")
-            snippetList:Refresh()
-            local children = DF.SnippetStore:GetChildren(project.id)
-            if #children > 0 then
-                LoadSnippet(children[1].id)
-            end
+    if waImportBtn then
+        waImportBtn:SetScript("OnClick", function()
+            DF.WAImporter:Show(function(files, projectName)
+                SaveCurrent()
+                local project = DF.SnippetStore:CreateProject(projectName)
+                for _, file in ipairs(files) do
+                    local s = DF.SnippetStore:Create(file.name, project.id)
+                    DF.SnippetStore:Save(s.id, s.name, file.code)
+                end
+                SetSidebarTab("snippets")
+                snippetList:Refresh()
+                local children = DF.SnippetStore:GetChildren(project.id)
+                if #children > 0 then
+                    LoadSnippet(children[1].id)
+                end
+            end)
         end)
-    end)
+    end
 
     -- Parse a .toc file's content and return ordered list of .lua filenames
     local function ParseTocLoadOrder(tocCode)
@@ -409,6 +640,13 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         if not currentSnippetId then return end
         if not DF.ConsoleExec then return end
         SaveCurrent()
+
+        -- Ensure bottom panel is visible and on the Output tab
+        local bp = DF.bottomPanel
+        if bp then
+            if bp.collapsed then bp:Expand() end
+            bp:SelectTab("output")
+        end
 
         -- Determine project context
         local snippet = DF.SnippetStore:Get(currentSnippetId)
@@ -457,17 +695,42 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         local addonName = project.name
         local filesRun, filesErrored = 0, 0
 
+        -- Memory baseline for Perf tracking
+        collectgarbage("collect")
+        local memBefore = collectgarbage("count")
+        local cpuAccum = 0   -- microseconds accumulated by wrapped frame scripts
+        local trackedFrames = {}
+
+        -- Unregister previous virtual entry if re-running
+        local debugKey = "debug:" .. project.id
+        if ranProjects[project.id] then
+            DF.PerfData:UnregisterVirtual(debugKey)
+        end
+
         -- Track frames that register for lifecycle events during execution
-        -- so we can simulate them after all files are loaded
+        -- so we can simulate them after all files are loaded.
+        -- IMPORTANT: The CreateFrame wrapper stays active during event simulation
+        -- so that frames created by event handlers (e.g. ns.Init() called from PEW)
+        -- also get their lifecycle events tracked and fired in subsequent passes.
         local addonLoadedFrames = {}
+        local playerLoginFrames = {}
         local enteringWorldFrames = {}
         local realCreateFrame = CreateFrame
+        local frameSeen = {} -- prevent duplicate tracking
         CreateFrame = function(frameType, ...)
             local frame = realCreateFrame(frameType, ...)
+            trackedFrames[#trackedFrames + 1] = frame
             local realRegisterEvent = frame.RegisterEvent
             frame.RegisterEvent = function(self, event, ...)
+                local key = tostring(self) .. event
+                if frameSeen[key] then
+                    return realRegisterEvent(self, event, ...)
+                end
+                frameSeen[key] = true
                 if event == "ADDON_LOADED" then
                     addonLoadedFrames[#addonLoadedFrames + 1] = self
+                elseif event == "PLAYER_LOGIN" then
+                    playerLoginFrames[#playerLoginFrames + 1] = self
                 elseif event == "PLAYER_ENTERING_WORLD" then
                     enteringWorldFrames[#enteringWorldFrames + 1] = self
                 end
@@ -504,79 +767,104 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             end
         end
 
-        -- Restore CreateFrame before firing events
+        -- Simulate lifecycle events with cascading: handlers may create new frames
+        -- that register for later events. We loop until no new frames appear.
+        -- WoW order: ADDON_LOADED → PLAYER_LOGIN → PLAYER_ENTERING_WORLD
+        local processedAL, processedLogin, processedPEW = 0, 0, 0
+        local maxPasses = 5
+
+        -- Helper: fire an event on unprocessed frames, capture print output
+        local function FireEvent(eventName, frames, processed, ...)
+            if processed >= #frames then return processed end
+
+            DF.EventBus:Fire("DF_OUTPUT_LINE", {
+                text = "-- Firing " .. eventName,
+                color = DF.Colors.comment,
+            })
+
+            local prints = {}
+            local origPrint = print
+            print = function(...)
+                local parts = {}
+                for i = 1, select("#", ...) do
+                    parts[i] = tostring(select(i, ...))
+                end
+                prints[#prints + 1] = table.concat(parts, "    ")
+            end
+
+            local eventArgs = { ... }
+            local nArgs = select("#", ...)
+            while processed < #frames do
+                processed = processed + 1
+                local frame = frames[processed]
+                local handler = frame:GetScript("OnEvent")
+                if handler then
+                    local ok, err = pcall(handler, frame, eventName, unpack(eventArgs, 1, nArgs))
+                    if not ok then
+                        prints[#prints + 1] = DF.Colors.error .. tostring(err) .. "|r"
+                        filesErrored = filesErrored + 1
+                    end
+                end
+            end
+
+            print = origPrint
+
+            for _, line in ipairs(prints) do
+                DF.EventBus:Fire("DF_OUTPUT_LINE", { text = DF.Colors.text .. line .. "|r" })
+            end
+
+            return processed
+        end
+
+        for pass = 1, maxPasses do
+            local alBefore = #addonLoadedFrames
+            local loginBefore = #playerLoginFrames
+            local pewBefore = #enteringWorldFrames
+
+            processedAL = FireEvent("ADDON_LOADED", addonLoadedFrames, processedAL, addonName)
+            processedLogin = FireEvent("PLAYER_LOGIN", playerLoginFrames, processedLogin)
+            processedPEW = FireEvent("PLAYER_ENTERING_WORLD", enteringWorldFrames, processedPEW, true, false)
+
+            -- If no new frames were added during this pass, we're done
+            local hadNew = (#addonLoadedFrames > alBefore)
+                or (#playerLoginFrames > loginBefore)
+                or (#enteringWorldFrames > pewBefore)
+            if not hadNew then break end
+        end
+
+        -- Restore CreateFrame AFTER all simulation is complete
         CreateFrame = realCreateFrame
 
-        -- Simulate ADDON_LOADED for frames that registered during execution
-        if #addonLoadedFrames > 0 then
-            DF.EventBus:Fire("DF_OUTPUT_LINE", {
-                text = "-- Firing ADDON_LOADED",
-                color = DF.Colors.comment,
-            })
+        -- Measure memory allocation and register Perf virtual entry
+        local memAfter = collectgarbage("count")
+        local memUsed = math.max(0, memAfter - memBefore)
 
-            -- Capture print output during event handlers
-            local prints = {}
-            local origPrint = print
-            print = function(...)
-                local parts = {}
-                for i = 1, select("#", ...) do
-                    parts[i] = tostring(select(i, ...))
-                end
-                prints[#prints + 1] = table.concat(parts, "    ")
+        -- Wrap OnUpdate/OnEvent on tracked frames for live CPU measurement
+        for _, frame in ipairs(trackedFrames) do
+            local origOnUpdate = frame:GetScript("OnUpdate")
+            if origOnUpdate then
+                frame:SetScript("OnUpdate", function(self, elapsed)
+                    local t0 = debugprofilestop()
+                    origOnUpdate(self, elapsed)
+                    cpuAccum = cpuAccum + (debugprofilestop() - t0)
+                end)
             end
-
-            for _, frame in ipairs(addonLoadedFrames) do
-                local handler = frame:GetScript("OnEvent")
-                if handler then
-                    local ok, err = pcall(handler, frame, "ADDON_LOADED", addonName)
-                    if not ok then
-                        prints[#prints + 1] = DF.Colors.error .. tostring(err) .. "|r"
-                        filesErrored = filesErrored + 1
-                    end
-                end
-            end
-
-            print = origPrint
-
-            for _, line in ipairs(prints) do
-                DF.EventBus:Fire("DF_OUTPUT_LINE", { text = DF.Colors.text .. line .. "|r" })
+            local origOnEvent = frame:GetScript("OnEvent")
+            if origOnEvent then
+                frame:SetScript("OnEvent", function(self, event, ...)
+                    local t0 = debugprofilestop()
+                    origOnEvent(self, event, ...)
+                    cpuAccum = cpuAccum + (debugprofilestop() - t0)
+                end)
             end
         end
 
-        -- Simulate PLAYER_ENTERING_WORLD for frames that registered during execution
-        if #enteringWorldFrames > 0 then
-            DF.EventBus:Fire("DF_OUTPUT_LINE", {
-                text = "-- Firing PLAYER_ENTERING_WORLD",
-                color = DF.Colors.comment,
-            })
-
-            local prints = {}
-            local origPrint = print
-            print = function(...)
-                local parts = {}
-                for i = 1, select("#", ...) do
-                    parts[i] = tostring(select(i, ...))
-                end
-                prints[#prints + 1] = table.concat(parts, "    ")
-            end
-
-            for _, frame in ipairs(enteringWorldFrames) do
-                local handler = frame:GetScript("OnEvent")
-                if handler then
-                    local ok, err = pcall(handler, frame, "PLAYER_ENTERING_WORLD", true, false)
-                    if not ok then
-                        prints[#prints + 1] = DF.Colors.error .. tostring(err) .. "|r"
-                        filesErrored = filesErrored + 1
-                    end
-                end
-            end
-
-            print = origPrint
-
-            for _, line in ipairs(prints) do
-                DF.EventBus:Fire("DF_OUTPUT_LINE", { text = DF.Colors.text .. line .. "|r" })
-            end
-        end
+        -- Register virtual entry in PerfData
+        local snap = DF.PerfData:RegisterVirtual(debugKey, "DEBUG: " .. project.name, function()
+            return { cpu = cpuAccum / 1000 }  -- convert μs to ms
+        end)
+        snap.memory = memUsed
+        snap.memoryPeak = memUsed
 
         -- Summary
         local summary = filesRun .. " file(s) executed"
@@ -588,6 +876,11 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             color = DF.Colors.func,
         })
         DF.EventBus:Fire("DF_OUTPUT_LINE", { text = "" })
+
+        ranProjects[project.id] = true
+        runBanner:Show()
+        UpdateEditorContentAnchor()
+        RefreshRunPanel()
     end)
 
     saveBtn:SetScript("OnClick", function()
@@ -610,10 +903,10 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         local code = codeEditor:GetText()
         if not code or code == "" then return end
 
-        if not DF.ConsoleExec then return end
-
-        -- Execute and send output to bottom panel
-        DF.EventBus:Fire("DF_EXECUTE_CODE", { code = code, source = "SnippetEditor" })
+        DF.EventBus:Fire("DF_EXECUTE_CODE", {
+            code = code,
+            source = "snippet",
+        })
     end)
 
     ---------------------------------------------------------------------------

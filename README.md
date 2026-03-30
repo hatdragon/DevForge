@@ -44,13 +44,14 @@ DevForge is designed to be **self-contained**, **dependency-light**, and adaptab
 
 ## Supported Clients
 
-| Client | Status |
-|------|------|
-| Retail (Mainline) | ✅ Full support |
-| Classic (current line) | 🧪 In progress (targeting parity) |
-| Classic Era | 🧭 Planned |
+| Client | Interface | Status |
+|--------|-----------|--------|
+| Retail (Mainline) | 120000 / 120001 | ✅ Full support |
+| Classic — Mists of Pandaria | 50503 | ✅ Supported |
+| Classic — Cataclysm | 40402 | ✅ Supported |
+| Classic Era (Vanilla) | 11508 | ✅ Supported |
 
-DevForge uses client detection and feature gating to ensure safe behavior across versions.
+A single codebase serves all clients. `Core/Compat.lua` provides polyfills for Retail-only APIs (`C_AddOns`, `HelpTip`) and flavor detection flags. The main TOC covers Retail and progressive Classic; `DevForge_Vanilla.toc` covers Classic Era. All modules load on every flavor except **WA Importer**, which is Retail-only.
 
 ---
 

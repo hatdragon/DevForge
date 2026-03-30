@@ -98,8 +98,31 @@ local function ProcessError(message, stack, locals, errType)
     if onNewError then onNewError(err, false) end
 end
 
--- BugGrabber callback handler
+-- BugGrabber callback handler (CallbackHandler-1.0 / legacy API)
 local function OnBugGrabbed(_, bugObj)
+    if not bugObj then return end
+    ProcessError(
+        bugObj.message,
+        bugObj.stack,
+        bugObj.locals,
+        bugObj.type or "error"
+    )
+end
+
+-- BugGrabber callback handler (EventRegistry API, current versions)
+-- BugGrabber now fires EventRegistry:TriggerEvent("BugGrabber.BugGrabbed", tableID)
+-- where tableID is tostring(errorObject), not the object itself.
+local function OnBugGrabbedEventRegistry(_, tableID)
+    local bugObj
+    if BugGrabber and BugGrabber.GetErrorByID then
+        bugObj = BugGrabber:GetErrorByID(tableID)
+    end
+    if not bugObj then
+        if BugGrabber and BugGrabber.GetDB then
+            local db = BugGrabber:GetDB()
+            if db then bugObj = db[#db] end
+        end
+    end
     if not bugObj then return end
     ProcessError(
         bugObj.message,
@@ -154,10 +177,21 @@ function Handler:Init()
 
     -- Hook error capture
     if _G.BugGrabber then
-        -- BugGrabber is present: use its callback system (CallbackHandler-1.0 API)
+        local hooked = false
+        -- Current BugGrabber uses EventRegistry
+        if EventRegistry and EventRegistry.RegisterCallback then
+            pcall(EventRegistry.RegisterCallback, EventRegistry,
+                "BugGrabber.BugGrabbed", OnBugGrabbedEventRegistry, Handler)
+            hooked = true
+            -- Tell BugGrabber a display is registered so it suppresses chat spam
+            pcall(EventRegistry.TriggerEvent, EventRegistry, "BugGrabber.DisplayRegistered")
+        end
+        -- Legacy BugGrabber uses CallbackHandler-1.0
         if BugGrabber.RegisterCallback then
-            BugGrabber.RegisterCallback(Handler, "BugGrabber_BugGrabbed", OnBugGrabbed)
-        elseif BugGrabber.RegisterAddonActionCallback then
+            pcall(BugGrabber.RegisterCallback, Handler, "BugGrabber_BugGrabbed", OnBugGrabbed)
+            hooked = true
+        end
+        if not hooked and BugGrabber.RegisterAddonActionCallback then
             BugGrabber.RegisterAddonActionCallback(OnBugGrabbed)
         end
     else

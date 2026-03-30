@@ -87,11 +87,14 @@ Each feature is documented individually with screenshots and usage notes.
 
 ## Client Support
 
-- **Retail:** Fully supported  
-- **Classic (current line):** Actively targeting parity  
-- **Classic Era:** Planned  
+| Client | Status |
+|--------|--------|
+| Retail (Mainline) | ✅ Full support |
+| Classic — Mists of Pandaria | ✅ Supported |
+| Classic — Cataclysm | ✅ Supported |
+| Classic Era (Vanilla) | ✅ Supported |
 
-Features automatically adapt based on client capabilities and available APIs.
+All modules work across every flavor except **WA Importer**, which is Retail-only. Features automatically adapt based on client capabilities and available APIs.
 
 ---
 

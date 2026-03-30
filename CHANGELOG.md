@@ -1,3 +1,12 @@
+2026-Mar-30 r1.0.13
+  Fixed: BugGrabber integration for current versions using EventRegistry API
+    - BugGrabber dropped CallbackHandler-1.0 in favor of Blizzard EventRegistry
+    - DevForge now supports both EventRegistry and legacy CallbackHandler paths
+    - Fires BugGrabber.DisplayRegistered to suppress duplicate chat output
+
+2026-Mar-12 r1.0.12
+  Improved: TextureBrowser functionality and versioning updates
+
 2026-Feb-25 r1.0.11
   New: Sound Browser module
     - Browse SoundKit IDs by category (auto-read from SOUNDKIT global, grouped by prefix)

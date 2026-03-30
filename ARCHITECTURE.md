@@ -1,6 +1,6 @@
 # DevForge Architecture
 
-> 76 files, ~26,000 lines of Lua.
+> 81 files, ~34,000 lines of Lua.
 > Bundled libraries: LibStub, LibDeflate, LibSerialize (for WA import decoding).
 > No Ace3 or external frameworks.
 
@@ -57,7 +57,7 @@ graph TB
     end
 
     subgraph Modules["Modules (Lazy-loaded)"]
-        ERR["ErrorHandler<br/>Lua error capture"]
+        ERR["ErrorHandler<br/>Lua error capture<br/>+ BugGrabber"]
         CON["Console<br/>REPL + History"]
         INS["Inspector<br/>Pick + Tree + Props"]
         API["API Browser<br/>Blizzard Docs"]
@@ -69,6 +69,7 @@ graph TB
         PERF["Performance<br/>Addon profiling"]
         MAC["MacroEditor<br/>Macro CRUD"]
         TEX["Textures<br/>Browser + Preview"]
+        SND["Sounds<br/>Kit + FileID + Capture"]
     end
 
     SLASH --> INIT
@@ -181,6 +182,7 @@ stateDiagram-v2
 | `Performance`    | Perf         | `/df perf`            | 3     |
 | `MacroEditor`    | Macros       | `/df macros`          | 3     |
 | `TextureBrowser` | Textures     | `/df textures`        | 5     |
+| `SoundBrowser`   | Sounds       | `/df sounds`          | 5     |
 
 ---
 
@@ -743,7 +745,8 @@ Addon loading     pcall(LoadAddOn)              Show fallback message
 Grid drawing      Loop cap (4000 lines)         Prevent infinite loops
 Resize handlers   Width > 0 guards              Skip layout on zero-size
 Font creation     _G lookup before CreateFont   Survives /reload
-Lua errors        seterrorhandler hook           Capture to ErrorHandler module
+Lua errors        BugGrabber EventRegistry /     Capture to ErrorHandler module
+                  CallbackHandler / seterrorhandler
 ```
 
 ### ErrorHandler Module
@@ -751,7 +754,9 @@ Lua errors        seterrorhandler hook           Capture to ErrorHandler module
 ```mermaid
 flowchart TD
     subgraph Capture["Error Capture"]
-        HOOK["seterrorhandler() hook"]
+        BG["BugGrabber EventRegistry hook"]
+        BGLEG["BugGrabber CallbackHandler (legacy)"]
+        HOOK["seterrorhandler() fallback"]
         FILTER["Deduplicate + timestamp"]
         STORE["Error list (ring buffer)"]
     end
@@ -762,6 +767,8 @@ flowchart TD
         MONITOR["ErrorMonitor<br/>Background error count badge"]
     end
 
+    BG --> FILTER
+    BGLEG --> FILTER
     HOOK --> FILTER --> STORE
     STORE --> LIST
     LIST -->|click| DETAIL
@@ -773,7 +780,7 @@ flowchart TD
 ## File Map
 
 ```
-DevForge/                          (76 files, ~26,000 lines)
+DevForge/                          (81 files, ~34,000 lines)
   DevForge.toc                     TOC manifest + load order
 
   Libs/                            Bundled libraries (3 files)
@@ -814,7 +821,7 @@ DevForge/                          (76 files, ~26,000 lines)
       CopyDialog.lua               Fullscreen copy-to-clipboard dialog
 
   Modules/ErrorHandler/            Error capture (4 files)
-    ErrorHandler.lua               Orchestrator, seterrorhandler hook
+    ErrorHandler.lua               Orchestrator, BugGrabber + seterrorhandler hook
     ErrorList.lua                  Scrollable error entry list
     ErrorDetail.lua                Stack trace + context display
     ErrorMonitor.lua               Background error count badge
@@ -885,4 +892,11 @@ DevForge/                          (76 files, ~26,000 lines)
     TextureRuntime.lua             Runtime texture lookup helpers
     TextureIndex.lua               Categorized texture paths + atlas
     TextureBrowser.lua             Grid preview with size toggle
+
+  Modules/SoundBrowser/            Sound Explorer (5 files)
+    SoundKitData.lua               Sound categorization from SOUNDKIT global
+    SoundFileData.lua              FileID range generator
+    SoundRuntime.lua               Runtime PlaySound/PlaySoundFile hooks
+    SoundIndex.lua                 Unified search across all sources
+    SoundBrowser.lua               Kit/FileID/Music/Recent browser + playback
 ```

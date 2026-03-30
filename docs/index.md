@@ -63,8 +63,15 @@ Each feature is documented individually with screenshots and usage notes.
 - **[API Browser](features/api-browser.md)**  
   Explore available APIs and namespaces based on the active client environment.
 
+### Asset Exploration
+- **[Texture & Atlas Browser](features/textures.md)**
+  Browse runtime-loaded textures, atlases, and visual assets with grid preview.
+
+- **[Sound Browser](features/sound.md)**
+  Explore SoundKit IDs, FileID ranges, and live-captured sounds with in-game playback.
+
 ### Runtime Observation
-- **[Event Monitor](features/event-monitor.md)**  
+- **[Event Monitor](features/event-monitor.md)**
   Observe live events, inspect payloads, and filter noisy event streams.
 
 - **[Table Viewer](features/tables.md)**  
@@ -108,7 +115,7 @@ Restart the game or reload the UI.
 
 ## Project Status
 
-DevForge is under active development and approaching its initial public release.
+DevForge is under active development. The current release is **r1.0.13**.
 
 Documentation, contribution guidelines, and additional tooling details will expand over time.
 

@@ -1,3 +1,7 @@
+2026-Aug-11 r1.0.16
+  Improved: Interface version bumped to 121000 for patch 12.1.0
+    - Addon scaffold and WeakAuras importer templates now emit "## Interface: 121000"
+
 2026-Mar-30 r1.0.13
   Fixed: BugGrabber integration for current versions using EventRegistry API
     - BugGrabber dropped CallbackHandler-1.0 in favor of Blizzard EventRegistry

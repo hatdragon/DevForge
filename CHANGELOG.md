@@ -1,6 +1,11 @@
+2026-Aug-12 r1.0.17
+  Fixed: Interface version corrected to 120100 for patch 12.1.0 — the previous value
+         made the addon show as incompatible in the addon manager
+    - Addon scaffold and WeakAuras importer templates emit "## Interface: 120100"
+
 2026-Aug-11 r1.0.16
-  Improved: Interface version bumped to 121000 for patch 12.1.0
-    - Addon scaffold and WeakAuras importer templates now emit "## Interface: 121000"
+  Improved: Interface version bumped to 120100 for patch 12.1.0
+    - Addon scaffold and WeakAuras importer templates now emit "## Interface: 120100"
 
 2026-Mar-30 r1.0.13
   Fixed: BugGrabber integration for current versions using EventRegistry API

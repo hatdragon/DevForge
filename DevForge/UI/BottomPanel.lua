@@ -331,8 +331,13 @@ function BottomPanel:Create(parent)
         return self.height
     end
 
-    function panel:SetHeight(h)
+    -- Resize without persisting; for use during an active drag
+    function panel:SetHeightLive(h)
         self.height = DF.Util:Clamp(h, L.bottomMinH, L.bottomMaxH)
+    end
+
+    function panel:SetHeight(h)
+        self:SetHeightLive(h)
         self:SaveState()
     end
 

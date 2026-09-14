@@ -183,6 +183,7 @@ function MainWin:Create()
     end)
     sidebarSplitter:SetScript("OnDragStop", function()
         sbDragging = false
+        sidebar:SaveState()
     end)
     sidebarSplitter:SetScript("OnUpdate", function()
         if not sbDragging then return end
@@ -190,8 +191,7 @@ function MainWin:Create()
         local scale = sidebarSplitter:GetEffectiveScale()
         local delta = (cx / scale) - sbDragStart
         local newW = DF.Util:Clamp(sbDragStartSize + delta, L.sidebarMinW, L.sidebarMaxW)
-        sidebar:SetWidth(newW)
-        sidebar.frame:SetWidth(newW)
+        sidebar:SetWidthLive(newW)
     end)
 
     ---------------------------------------------------------------------------
@@ -237,6 +237,7 @@ function MainWin:Create()
     end)
     bottomSplitter:SetScript("OnDragStop", function()
         btDragging = false
+        DF.bottomPanel:SaveState()
     end)
     bottomSplitter:SetScript("OnUpdate", function()
         if not btDragging then return end
@@ -244,7 +245,7 @@ function MainWin:Create()
         local scale = bottomSplitter:GetEffectiveScale()
         local delta = btDragStart - (cy / scale) -- inverted: drag down = larger
         local newH = DF.Util:Clamp(btDragStartSize + delta, L.bottomMinH, L.bottomMaxH)
-        DF.bottomPanel:SetHeight(newH)
+        DF.bottomPanel:SetHeightLive(newH)
         MainWin:UpdateLayout()
     end)
 

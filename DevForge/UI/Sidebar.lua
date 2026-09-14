@@ -156,9 +156,14 @@ function Sidebar:Create(parent)
         return self.width
     end
 
-    function sidebar:SetWidth(w)
+    -- Resize without persisting; for use during an active drag
+    function sidebar:SetWidthLive(w)
         self.width = DF.Util:Clamp(w, L.sidebarMinW, L.sidebarMaxW)
         frame:SetWidth(self.width)
+    end
+
+    function sidebar:SetWidth(w)
+        self:SetWidthLive(w)
         self:SaveState()
     end
 

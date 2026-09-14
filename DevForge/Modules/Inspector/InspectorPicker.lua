@@ -89,46 +89,41 @@ local function IsFilteredFrame(frame, name)
     return false
 end
 
--- Collect all visible frames under the cursor
+-- Collect the frames actually under the cursor.
+-- Uses GetMouseFoci() -- the same native mouse-focus resolution behind
+-- Blizzard's own /fstack -- instead of walking every frame in the entire
+-- UI via EnumerateFrames() and pcall-testing IsVisible/IsMouseOver on each
+-- one. That approach ran every 0.1s over potentially thousands of frames
+-- and was slow enough to trip the script-too-long watchdog.
 local function BuildFrameStack()
     local stack = {}
 
-    if not EnumerateFrames then return stack end
+    if not GetMouseFoci then return stack end
 
-    local f = EnumerateFrames()
-    while f do
+    local foci = GetMouseFoci()
+    for _, f in ipairs(foci) do
         if f ~= pickerFrame then
-            -- Some protected frames (secure unit frames, etc.) return a
-            -- "secret" value here, which can't be boolean-tested directly
-            -- from tainted addon code -- SafeBool treats that as unknown/
-            -- false rather than erroring.
-            local okVis, vis = pcall(f.IsVisible, f)
-            if SafeBool(okVis, vis) then
-                local okOver, over = pcall(f.IsMouseOver, f)
-                if SafeBool(okOver, over) then
-                    -- Apply noise filter
-                    local dominated = false
-                    if not showFiltered then
-                        local okN, fname = pcall(f.GetName, f)
-                        dominated = IsFilteredFrame(f, okN and fname or nil)
-                    end
+            -- Apply noise filter
+            local dominated = false
+            if not showFiltered then
+                local okN, fname = pcall(f.GetName, f)
+                dominated = IsFilteredFrame(f, okN and fname or nil)
+            end
 
-                    if not dominated then
-                        local okS, strata = pcall(f.GetFrameStrata, f)
-                        local okL, level = pcall(f.GetFrameLevel, f)
-                        stack[#stack + 1] = {
-                            frame = f,
-                            strata = (okS and STRATA_ORDER[strata]) or 0,
-                            level = (okL and level) or 0,
-                        }
-                    end
-                end
+            if not dominated then
+                local okS, strata = pcall(f.GetFrameStrata, f)
+                local okL, level = pcall(f.GetFrameLevel, f)
+                stack[#stack + 1] = {
+                    frame = f,
+                    strata = (okS and STRATA_ORDER[strata]) or 0,
+                    level = (okL and level) or 0,
+                }
             end
         end
-        f = EnumerateFrames(f)
     end
 
-    -- Sort: highest strata first, then highest level
+    -- Sort: highest strata first, then highest level (GetMouseFoci is
+    -- already topmost-first, but this keeps the ordering guaranteed)
     table.sort(stack, function(a, b)
         if a.strata ~= b.strata then return a.strata > b.strata end
         return a.level > b.level

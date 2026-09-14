@@ -95,14 +95,22 @@ local function IsFilteredFrame(frame, name)
     return false
 end
 
+-- Diagnostics from the last BuildFrameStack call, shown in the picker
+-- display so we can see real numbers instead of guessing at the cost.
+local lastScanCount = 0
+local lastScanMs = 0
+
 -- Collect all visible frames under the cursor
 local function BuildFrameStack()
+    local startTime = debugprofilestop()
+    local scanned = 0
     local stack = {}
 
     if not EnumerateFrames then return stack end
 
     local f = EnumerateFrames()
     while f do
+        scanned = scanned + 1
         if f ~= pickerFrame then
             -- Some protected frames (secure unit frames, etc.) return a
             -- "secret" value here, which can't be boolean-tested directly
@@ -133,6 +141,9 @@ local function BuildFrameStack()
         end
         f = EnumerateFrames(f)
     end
+
+    lastScanCount = scanned
+    lastScanMs = debugprofilestop() - startTime
 
     -- Sort: highest strata first, then highest level
     table.sort(stack, function(a, b)
@@ -211,6 +222,7 @@ local function UpdateStackDisplay()
         or "|cFF888888Tab: Show noise frames (UIParent, WorldFrame, etc.)|r"
     lines[#lines + 1] = "|cFF888888Scroll to cycle  |  Click to select  |  Esc/Right-click to cancel|r"
     lines[#lines + 1] = filterLabel
+    lines[#lines + 1] = string.format("|cFF555555Scanned %d frames in %.1fms|r", lastScanCount, lastScanMs)
 
     pickerFrame.stackText:SetText(table.concat(lines, "\n"))
 

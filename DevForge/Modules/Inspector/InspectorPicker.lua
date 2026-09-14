@@ -32,7 +32,13 @@ local STRATA_ORDER = {
     FULLSCREEN_DIALOG = 7, TOOLTIP = 8,
 }
 
-local UPDATE_INTERVAL = 0.1  -- same as /fstack
+-- BuildFrameStack walks every frame object in the client (EnumerateFrames
+-- has no faster alternative that preserves full geometric/occlusion-
+-- ignoring stack semantics -- GetMouseFoci() looked like one but actually
+-- resolves z-order-aware event routing, a different question, and only
+-- ever returns our own picker overlay). Kept well below 10Hz so the walk's
+-- cost stays bounded regardless of total frame count.
+local UPDATE_INTERVAL = 0.3
 
 -- Frames filtered out by default (common noise)
 local FILTERED_EXACT = {
@@ -263,12 +269,20 @@ function Picker:Create()
     titleText:SetTextColor(0.4, 0.7, 1, 0.9)
     pickerFrame.titleText = titleText
 
-    -- OnUpdate: rebuild frame stack periodically
+    -- OnUpdate: rebuild frame stack periodically, but only when the cursor
+    -- has actually moved -- skips the expensive walk entirely while the
+    -- user is just holding still reading the stack, which is most of the
+    -- time this tool is actually open.
     local elapsed = 0
+    local lastCursorX, lastCursorY = nil, nil
     pickerFrame:SetScript("OnUpdate", function(_, dt)
         elapsed = elapsed + dt
         if elapsed < UPDATE_INTERVAL then return end
         elapsed = 0
+
+        local cx, cy = GetCursorPosition()
+        if cx == lastCursorX and cy == lastCursorY then return end
+        lastCursorX, lastCursorY = cx, cy
 
         frameStack = BuildFrameStack()
 

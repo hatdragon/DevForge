@@ -8,7 +8,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     end
 
     local editor = {}
-    local currentSnippetId = nil
+    local activeTabId = nil
+    local openTabs = {}  -- ordered list of open snippet ids
     local ranProjects = {}  -- [projectId] = true for projects that have been run
 
     ---------------------------------------------------------------------------
@@ -76,9 +77,17 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     snippetsContainer:SetPoint("TOPLEFT", toggleBar, "BOTTOMLEFT", 0, -2)
     snippetsContainer:SetPoint("BOTTOMRIGHT", 0, 0)
 
+    local snippetSearch = DF.Widgets:CreateSearchBox(snippetsContainer, "Filter snippets...", 22)
+    snippetSearch.frame:SetPoint("TOPLEFT", snippetsContainer, "TOPLEFT", 2, -2)
+    snippetSearch.frame:SetPoint("TOPRIGHT", snippetsContainer, "TOPRIGHT", -2, -2)
+
     local snippetList = DF.SnippetList:Create(snippetsContainer)
-    snippetList.frame:SetPoint("TOPLEFT", snippetsContainer, "TOPLEFT", 0, 0)
+    snippetList.frame:SetPoint("TOPLEFT", snippetSearch.frame, "BOTTOMLEFT", 0, -2)
     snippetList.frame:SetPoint("BOTTOMRIGHT", snippetsContainer, "BOTTOMRIGHT", 0, 0)
+
+    snippetSearch:SetOnSearch(function(text)
+        snippetList:SetFilter(text)
+    end)
 
     -- Running-projects panel (bottom of sidebar, hidden until first run)
     local runPanel = CreateFrame("Frame", nil, snippetsContainer, "BackdropTemplate")
@@ -229,11 +238,17 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     emptyState:SetText("Create a snippet to get started.")
     emptyState:SetTextColor(0.5, 0.5, 0.5, 1)
 
+    -- Open-tabs strip (hidden when nothing is open)
+    local tabStrip = DF.Widgets:CreateTabStrip(editorFrame)
+    tabStrip.frame:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
+    tabStrip.frame:SetPoint("TOPRIGHT", toolbar, "BOTTOMRIGHT", 0, -2)
+    tabStrip.frame:Hide()
+
     -- Run-project warning banner
     local runBanner = CreateFrame("Frame", nil, editorFrame, "BackdropTemplate")
     runBanner:SetHeight(20)
-    runBanner:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
-    runBanner:SetPoint("TOPRIGHT", toolbar, "BOTTOMRIGHT", 0, -2)
+    runBanner:SetPoint("TOPLEFT", tabStrip.frame, "BOTTOMLEFT", 0, -2)
+    runBanner:SetPoint("TOPRIGHT", tabStrip.frame, "BOTTOMRIGHT", 0, -2)
     runBanner:Hide()
     local runBannerBg = runBanner:CreateTexture(nil, "BACKGROUND")
     runBannerBg:SetAllPoints()
@@ -259,6 +274,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         editorContent:ClearAllPoints()
         if runBanner:IsShown() then
             editorContent:SetPoint("TOPLEFT", runBanner, "BOTTOMLEFT", 0, -2)
+        elseif tabStrip.frame:IsShown() then
+            editorContent:SetPoint("TOPLEFT", tabStrip.frame, "BOTTOMLEFT", 0, -2)
         else
             editorContent:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
         end
@@ -290,6 +307,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     nameInput:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     nameInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    DF.Util:HookSaveShortcut(nameInput, function() saveBtn:Click() end)
 
     -- Code editor (uses most of remaining space)
     local codeEditor = DF.Widgets:CreateCodeEditBox(editorContent, {
@@ -298,34 +316,47 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     })
     codeEditor.frame:SetPoint("TOPLEFT", nameRow, "BOTTOMLEFT", 0, -2)
     codeEditor.frame:SetPoint("BOTTOMRIGHT", 0, 0)
+    codeEditor:SetOnSaveShortcut(function() saveBtn:Click() end)
 
     ---------------------------------------------------------------------------
     -- Logic
     ---------------------------------------------------------------------------
     local function SaveCurrent()
-        if not currentSnippetId then return end
+        if not activeTabId then return end
         local name = nameInput:GetText()
         local code = codeEditor:GetText()
-        DF.SnippetStore:Save(currentSnippetId, name, code)
+        DF.SnippetStore:Save(activeTabId, name, code)
     end
 
-    local function LoadSnippet(id)
-        if not id then
-            runBanner:Hide()
-            UpdateEditorContentAnchor()
-            editorContent:Hide()
-            emptyState:Show()
-            currentSnippetId = nil
-            return
+    -- Rebuild the tab strip from openTabs + persist it
+    local function RefreshTabStrip()
+        local tabs = {}
+        for _, id in ipairs(openTabs) do
+            local snippet = DF.SnippetStore:Get(id)
+            if snippet then
+                tabs[#tabs + 1] = { id = id, label = snippet.name or "Untitled" }
+            end
         end
+        tabStrip:SetTabs(tabs)
+        tabStrip:SetActive(activeTabId)
+        tabStrip.frame:SetShown(#tabs > 0)
+        UpdateEditorContentAnchor()
+        if DevForgeDB then
+            DevForgeDB.openSnippetTabs = openTabs
+        end
+    end
 
-        local snippet = DF.SnippetStore:Get(id)
+    -- Show a snippet's content in the shared editor pane. Does not affect
+    -- which tabs are open; use OpenTab for that.
+    local function ActivateTab(id)
+        local snippet = id and DF.SnippetStore:Get(id)
         if not snippet then
             runBanner:Hide()
+            activeTabId = nil
             UpdateEditorContentAnchor()
             editorContent:Hide()
             emptyState:Show()
-            currentSnippetId = nil
+            tabStrip:SetActive(nil)
             return
         end
 
@@ -336,26 +367,80 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         else
             runBanner:Hide()
         end
-        UpdateEditorContentAnchor()
 
         emptyState:Hide()
         editorContent:Show()
+        UpdateEditorContentAnchor()
 
-        currentSnippetId = id
+        activeTabId = id
         nameInput:SetText(snippet.name or "")
         codeEditor:SetText(snippet.code or "")
         if codeEditor.ResetUndo then codeEditor:ResetUndo() end
         snippetList:SetSelected(id)
+        tabStrip:SetActive(id)
 
         if DevForgeDB then
             DevForgeDB.lastSnippetId = id
         end
     end
 
+    -- Open a snippet in a tab (if not already open) and activate it
+    local function OpenTab(id)
+        if not id then
+            ActivateTab(nil)
+            return
+        end
+        local alreadyOpen = false
+        for _, existing in ipairs(openTabs) do
+            if existing == id then alreadyOpen = true; break end
+        end
+        if not alreadyOpen then
+            openTabs[#openTabs + 1] = id
+        end
+        ActivateTab(id)
+        RefreshTabStrip()
+    end
+
+    -- Close a tab without touching the underlying snippet. If it was active,
+    -- activates the tab to its right, else its left, else shows empty state.
+    local function CloseTab(id)
+        local idx
+        for i, existing in ipairs(openTabs) do
+            if existing == id then idx = i; break end
+        end
+        if not idx then return end
+
+        if activeTabId == id then
+            SaveCurrent()
+        end
+        table.remove(openTabs, idx)
+
+        if activeTabId == id then
+            ActivateTab(openTabs[idx] or openTabs[idx - 1])
+        end
+        RefreshTabStrip()
+    end
+
+    -- Drop open tabs whose snippet no longer exists (after a delete),
+    -- falling back to another open tab (or the empty state) if needed.
+    local function PurgeMissingTabs()
+        local kept = {}
+        for _, id in ipairs(openTabs) do
+            if DF.SnippetStore:Get(id) then
+                kept[#kept + 1] = id
+            end
+        end
+        openTabs = kept
+        if activeTabId and not DF.SnippetStore:Get(activeTabId) then
+            ActivateTab(openTabs[1])
+        end
+        RefreshTabStrip()
+    end
+
     local function SelectNext()
         local topLevel = DF.SnippetStore:GetTopLevel()
         if #topLevel == 0 then
-            LoadSnippet(nil)
+            OpenTab(nil)
             return
         end
         -- If the first top-level item is a project, select its first child
@@ -363,17 +448,17 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         if first.isProject then
             local children = DF.SnippetStore:GetChildren(first.id)
             if #children > 0 then
-                LoadSnippet(children[1].id)
+                OpenTab(children[1].id)
                 return
             end
         end
-        LoadSnippet(first.id)
+        OpenTab(first.id)
     end
 
     -- Insert code at the cursor position in the active editor.
     -- If nothing is open, create a new snippet with the code.
     local function InsertCode(code, snippetName)
-        if currentSnippetId then
+        if activeTabId then
             -- Insert at cursor position via the native EditBox Insert()
             codeEditor:Insert(code)
             SaveCurrent()
@@ -385,7 +470,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             DF.SnippetStore:Save(snippet.id, snippet.name, code)
             SetSidebarTab("snippets")
             snippetList:Refresh()
-            LoadSnippet(snippet.id)
+            OpenTab(snippet.id)
         end
     end
 
@@ -404,14 +489,34 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         SaveCurrent()
         local snippet = DF.SnippetStore:Create("Untitled", parentId)
         snippetList:Refresh()
-        LoadSnippet(snippet.id)
+        OpenTab(snippet.id)
         nameInput:SetFocus()
         nameInput:HighlightText()
     end
 
     snippetList:SetOnSelect(function(id)
         SaveCurrent()
-        LoadSnippet(id)
+        OpenTab(id)
+    end)
+
+    tabStrip:SetOnSelect(function(id)
+        SaveCurrent()
+        ActivateTab(id)
+        RefreshTabStrip()
+    end)
+
+    tabStrip:SetOnAction(function(action, id)
+        if action == "close" then
+            CloseTab(id)
+        elseif action == "closeOthers" then
+            for _, existing in ipairs({ unpack(openTabs) }) do
+                if existing ~= id then CloseTab(existing) end
+            end
+        elseif action == "closeAll" then
+            for _, existing in ipairs({ unpack(openTabs) }) do
+                CloseTab(existing)
+            end
+        end
     end)
 
     local contextMenu = DF.Widgets:CreateDropDown()
@@ -438,28 +543,17 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
                 text = label,
                 func = function()
                     DF.SnippetStore:Delete(snippetId)
-                    if currentSnippetId then
-                        local cur = DF.SnippetStore:Get(currentSnippetId)
-                        if not cur then
-                            currentSnippetId = nil
-                            SelectNext()
-                        end
-                    end
                     snippetList:Refresh()
+                    PurgeMissingTabs()
                 end,
             }
         else
             items[#items + 1] = {
                 text = "Delete snippet",
                 func = function()
-                    if currentSnippetId == snippetId then
-                        currentSnippetId = nil
-                    end
                     DF.SnippetStore:Delete(snippetId)
                     snippetList:Refresh()
-                    if not currentSnippetId then
-                        SelectNext()
-                    end
+                    PurgeMissingTabs()
                 end,
             }
         end
@@ -529,8 +623,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     newBtn:SetScript("OnClick", function(self)
         -- Determine project context
         local projectId, projectName
-        if currentSnippetId then
-            local cur = DF.SnippetStore:Get(currentSnippetId)
+        if activeTabId then
+            local cur = DF.SnippetStore:Get(activeTabId)
             if cur then
                 if cur.isProject then
                     projectId = cur.id
@@ -558,22 +652,20 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     end)
 
     dupBtn:SetScript("OnClick", function()
-        if not currentSnippetId then return end
+        if not activeTabId then return end
         SaveCurrent()
-        local clone = DF.SnippetStore:Duplicate(currentSnippetId)
+        local clone = DF.SnippetStore:Duplicate(activeTabId)
         if clone then
             snippetList:Refresh()
-            LoadSnippet(clone.id)
+            OpenTab(clone.id)
         end
     end)
 
     delBtn:SetScript("OnClick", function()
-        if not currentSnippetId then return end
-        local idToDelete = currentSnippetId
-        currentSnippetId = nil
-        DF.SnippetStore:Delete(idToDelete)
+        if not activeTabId then return end
+        DF.SnippetStore:Delete(activeTabId)
         snippetList:Refresh()
-        SelectNext()
+        PurgeMissingTabs()
     end)
 
     frameBuilderBtn:SetScript("OnClick", function()
@@ -595,7 +687,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             -- Load the first child file
             local children = DF.SnippetStore:GetChildren(project.id)
             if #children > 0 then
-                LoadSnippet(children[1].id)
+                OpenTab(children[1].id)
             end
         end)
     end)
@@ -615,7 +707,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     end
 
     runProjectBtn:SetScript("OnClick", function()
-        if not currentSnippetId then return end
+        if not activeTabId then return end
         if not DF.ConsoleExec then return end
         SaveCurrent()
 
@@ -627,7 +719,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         end
 
         -- Determine project context
-        local snippet = DF.SnippetStore:Get(currentSnippetId)
+        local snippet = DF.SnippetStore:Get(activeTabId)
         if not snippet or not snippet.parentId then return end
 
         local project = DF.SnippetStore:Get(snippet.parentId)
@@ -864,6 +956,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     saveBtn:SetScript("OnClick", function()
         SaveCurrent()
         snippetList:Refresh()
+        RefreshTabStrip()
     end)
 
     copyBtn:SetScript("OnClick", function()
@@ -874,7 +967,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     end)
 
     runBtn:SetScript("OnClick", function()
-        if not currentSnippetId then return end
+        if not activeTabId then return end
         SaveCurrent()
         if codeEditor.PushUndo then codeEditor:PushUndo() end
 
@@ -891,7 +984,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     -- InsertText for IntegrationBus
     ---------------------------------------------------------------------------
     function editor:InsertText(text)
-        if currentSnippetId then
+        if activeTabId then
             -- Append to current snippet
             local current = codeEditor:GetText() or ""
             if current ~= "" and not current:match("\n$") then
@@ -908,7 +1001,7 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         SaveCurrent()
         local snippet = DF.SnippetStore:Create("Untitled")
         snippetList:Refresh()
-        LoadSnippet(snippet.id)
+        OpenTab(snippet.id)
         codeEditor:SetText(text)
     end
 
@@ -923,10 +1016,20 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         local tab = DevForgeDB and DevForgeDB.snippetSidebarTab or "snippets"
         SetSidebarTab(tab)
 
+        -- Restore previously open tabs
+        local savedTabs = (DevForgeDB and DevForgeDB.openSnippetTabs) or {}
+        for _, id in ipairs(savedTabs) do
+            if DF.SnippetStore:Get(id) then
+                openTabs[#openTabs + 1] = id
+            end
+        end
+
         local lastId = DevForgeDB and DevForgeDB.lastSnippetId
         local lastSnippet = lastId and DF.SnippetStore:Get(lastId)
         if lastSnippet and not lastSnippet.isProject then
-            LoadSnippet(lastId)
+            OpenTab(lastId)
+        elseif openTabs[1] then
+            OpenTab(openTabs[1])
         else
             SelectNext()
         end
@@ -934,12 +1037,13 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
 
     function editor:OnActivate()
         snippetList:Refresh()
+        PurgeMissingTabs()
     end
 
     function editor:OnDeactivate()
         SaveCurrent()
-        if DevForgeDB and currentSnippetId then
-            DevForgeDB.lastSnippetId = currentSnippetId
+        if DevForgeDB and activeTabId then
+            DevForgeDB.lastSnippetId = activeTabId
         end
         codeEditor:ClearFocus()
         nameInput:ClearFocus()

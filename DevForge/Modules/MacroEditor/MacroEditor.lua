@@ -93,6 +93,7 @@ DF.ModuleSystem:Register("MacroEditor", function(sidebarParent, editorParent)
 
     nameInput:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     nameInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    DF.Util:HookSaveShortcut(nameInput, function() saveBtn:Click() end)
 
     -- Vertical split: code editor top, output bottom
     local editorSplit = DF.Widgets:CreateSplitPane(editorContent, {
@@ -109,6 +110,7 @@ DF.ModuleSystem:Register("MacroEditor", function(sidebarParent, editorParent)
         readOnly = false,
     })
     codeEditor.frame:SetAllPoints(editorSplit.top)
+    codeEditor:SetOnSaveShortcut(function() saveBtn:Click() end)
 
     local outputPane = DF.ConsoleOutput:Create(editorSplit.bottom)
     outputPane.frame:SetAllPoints(editorSplit.bottom)

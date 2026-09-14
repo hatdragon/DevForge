@@ -54,6 +54,7 @@ UI\Widgets\PropertyGrid.lua
 UI\Widgets\SplitPane.lua
 UI\Widgets\DropDown.lua
 UI\Widgets\CopyDialog.lua
+UI\Widgets\TabStrip.lua
 UI\ActivityBar.lua
 UI\Sidebar.lua
 UI\BottomPanel.lua

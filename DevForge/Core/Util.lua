@@ -159,6 +159,15 @@ function Util:Clamp(val, minVal, maxVal)
     return math.max(minVal, math.min(maxVal, val))
 end
 
+-- Hook Ctrl+S (or Cmd+S on Mac) on a keyboard-enabled frame to fire a callback
+function Util:HookSaveShortcut(frame, callback)
+    frame:HookScript("OnKeyDown", function(_, key)
+        if key == "S" and (IsControlKeyDown() or IsMetaKeyDown()) then
+            callback()
+        end
+    end)
+end
+
 -- Escape WoW color codes for display
 function Util:EscapeColors(s)
     return s:gsub("|", "||")

@@ -130,6 +130,11 @@ function DF.Widgets:CreateCodeEditBox(parent, opts)
         self.editbox:SetScript("OnEnterPressed", callback)
     end
 
+    -- Fires callback on Ctrl+S while this box has focus
+    function widget:SetOnSaveShortcut(callback)
+        DF.Util:HookSaveShortcut(self.editbox, callback)
+    end
+
     function widget:Enable()
         self.editbox:EnableKeyboard(true)
         self.editbox:EnableMouse(true)

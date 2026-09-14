@@ -42,6 +42,9 @@ function DF.Widgets:CreateSearchBox(parent, placeholder, height)
     clearBtn:SetScript("OnClick", function()
         editbox:SetText("")
         editbox:ClearFocus()
+        if searchBox.onSearch then
+            searchBox.onSearch("")
+        end
     end)
     clearBtn:SetScript("OnEnter", function()
         clearText:SetTextColor(1, 1, 1, 1)

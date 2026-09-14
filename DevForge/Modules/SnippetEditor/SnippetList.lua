@@ -16,6 +16,7 @@ function SnipList:Create(parent)
         selectedId = nil,
         onSelect = nil,
         expanded = {},  -- projectId -> true/false
+        filterText = "",
     }
 
     function list:GetRow(index)
@@ -132,6 +133,18 @@ function SnipList:Create(parent)
         row.text:SetTextColor(0.83, 0.83, 0.83, 1)
     end
 
+    -- Place and configure the next row, advancing yOffset
+    local function PlaceRow(self, rowIndex, contentW, yOffset, snippet, setup, ...)
+        local row = self:GetRow(rowIndex)
+        row:SetWidth(contentW)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", self.pane:GetContent(), "TOPLEFT", 0, -yOffset)
+        row.snippetId = snippet.id
+        setup(row, snippet, ...)
+        if snippet.id == self.selectedId then row.sel:Show() else row.sel:Hide() end
+        return yOffset + ROW_HEIGHT
+    end
+
     function list:Refresh()
         self:HideAllRows()
 
@@ -139,69 +152,56 @@ function SnipList:Create(parent)
         local contentW = self.pane:GetContent():GetWidth()
         local yOffset = 0
         local rowIndex = 0
+        local filter = self.filterText or ""
+        local filtering = filter ~= ""
 
         for _, snippet in ipairs(topLevel) do
-            rowIndex = rowIndex + 1
-            local row = self:GetRow(rowIndex)
-            row:SetWidth(contentW)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", self.pane:GetContent(), "TOPLEFT", 0, -yOffset)
-            row.snippetId = snippet.id
-
             if snippet.isProject then
-                -- Default new projects to expanded
-                if self.expanded[snippet.id] == nil then
-                    self.expanded[snippet.id] = true
-                end
-                local isExpanded = self.expanded[snippet.id]
-                SetupProjectRow(row, snippet, isExpanded)
+                local selfMatches = not filtering or DF.Util:ContainsCI(snippet.name or "", filter)
+                local children = DF.SnippetStore:GetChildren(snippet.id)
+                local visibleChildren = children
 
-                -- Selection state (projects don't normally get selected, but handle it)
-                if snippet.id == self.selectedId then
-                    row.sel:Show()
-                else
-                    row.sel:Hide()
-                end
-
-                yOffset = yOffset + ROW_HEIGHT
-
-                -- Render children if expanded
-                if isExpanded then
-                    local children = DF.SnippetStore:GetChildren(snippet.id)
+                if filtering and not selfMatches then
+                    visibleChildren = {}
                     for _, child in ipairs(children) do
-                        rowIndex = rowIndex + 1
-                        local childRow = self:GetRow(rowIndex)
-                        childRow:SetWidth(contentW)
-                        childRow:ClearAllPoints()
-                        childRow:SetPoint("TOPLEFT", self.pane:GetContent(), "TOPLEFT", 0, -yOffset)
-                        childRow.snippetId = child.id
-
-                        SetupChildRow(childRow, child)
-
-                        if child.id == self.selectedId then
-                            childRow.sel:Show()
-                        else
-                            childRow.sel:Hide()
+                        if DF.Util:ContainsCI(child.name or "", filter) then
+                            visibleChildren[#visibleChildren + 1] = child
                         end
+                    end
+                end
 
-                        yOffset = yOffset + ROW_HEIGHT
+                if not filtering or selfMatches or #visibleChildren > 0 then
+                    -- Default new projects to expanded; force-expand while filtering
+                    -- so matches are visible without disturbing the saved state
+                    if self.expanded[snippet.id] == nil then
+                        self.expanded[snippet.id] = true
+                    end
+                    local isExpanded = filtering or self.expanded[snippet.id]
+
+                    rowIndex = rowIndex + 1
+                    yOffset = PlaceRow(self, rowIndex, contentW, yOffset, snippet, SetupProjectRow, isExpanded)
+
+                    if isExpanded then
+                        for _, child in ipairs(visibleChildren) do
+                            rowIndex = rowIndex + 1
+                            yOffset = PlaceRow(self, rowIndex, contentW, yOffset, child, SetupChildRow)
+                        end
                     end
                 end
             else
-                -- Standalone snippet
-                SetupStandaloneRow(row, snippet)
-
-                if snippet.id == self.selectedId then
-                    row.sel:Show()
-                else
-                    row.sel:Hide()
+                if not filtering or DF.Util:ContainsCI(snippet.name or "", filter) then
+                    rowIndex = rowIndex + 1
+                    yOffset = PlaceRow(self, rowIndex, contentW, yOffset, snippet, SetupStandaloneRow)
                 end
-
-                yOffset = yOffset + ROW_HEIGHT
             end
         end
 
         self.pane:SetContentHeight(yOffset)
+    end
+
+    function list:SetFilter(text)
+        self.filterText = text or ""
+        self:Refresh()
     end
 
     function list:UpdateSelection()

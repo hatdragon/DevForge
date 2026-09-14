@@ -12,11 +12,15 @@ local activeModule = nil
 -- New signature supports icon and two-part factory:
 --   factory(sidebarParent, editorParent) -> { sidebar = frame, editor = frame }
 --   OR legacy: factory() -> { frame = frame }
-function ModuleSystem:Register(name, factory, tabLabel)
+-- opts.fullArea: when active, this module wants the bottom panel to take
+-- over the entire main area instead of sharing it with the editor content
+-- (e.g. Console).
+function ModuleSystem:Register(name, factory, tabLabel, opts)
     if modules[name] then return end
     modules[name] = {
         factory = factory,
         tabLabel = tabLabel or name,
+        fullArea = opts and opts.fullArea or false,
         instance = nil,
         activated = false,
         sidebarFrame = nil,
@@ -128,6 +132,13 @@ end
 -- Get the currently active module name
 function ModuleSystem:GetActive()
     return activeModule
+end
+
+-- Whether the active module wants the bottom panel to fill the whole
+-- main area (see Register's opts.fullArea)
+function ModuleSystem:IsActiveFullArea()
+    local mod = activeModule and modules[activeModule]
+    return mod ~= nil and mod.fullArea
 end
 
 -- Get a module instance (may be nil if not yet activated)

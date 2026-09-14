@@ -132,4 +132,4 @@ DF.ModuleSystem:Register("Console", function(sidebarParent, editorParent)
     -- Return as legacy single-frame module
     -- The Console doesn't have a sidebar component
     return console
-end, "Console")
+end, "Console", { fullArea = true })

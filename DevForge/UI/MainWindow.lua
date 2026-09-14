@@ -169,30 +169,20 @@ function MainWin:Create()
     sbSplitHl:SetColorTexture(0.4, 0.6, 0.9, 0.3)
 
     -- Sidebar drag resize
-    sidebarSplitter:EnableMouse(true)
-    sidebarSplitter:RegisterForDrag("LeftButton")
-    local sbDragging = false
-    local sbDragStart, sbDragStartSize
-
-    sidebarSplitter:SetScript("OnDragStart", function()
-        sbDragging = true
-        local cx = GetCursorPosition()
-        local scale = sidebarSplitter:GetEffectiveScale()
-        sbDragStart = cx / scale
-        sbDragStartSize = sidebar.width
-    end)
-    sidebarSplitter:SetScript("OnDragStop", function()
-        sbDragging = false
-        sidebar:SaveState()
-    end)
-    sidebarSplitter:SetScript("OnUpdate", function()
-        if not sbDragging then return end
-        local cx = GetCursorPosition()
-        local scale = sidebarSplitter:GetEffectiveScale()
-        local delta = (cx / scale) - sbDragStart
-        local newW = DF.Util:Clamp(sbDragStartSize + delta, L.sidebarMinW, L.sidebarMaxW)
-        sidebar:SetWidthLive(newW)
-    end)
+    local sbDragStartSize
+    DF.Widgets:AttachSplitterDrag(sidebarSplitter, {
+        axis = "x",
+        onDragStart = function()
+            sbDragStartSize = sidebar.width
+        end,
+        onDrag = function(delta)
+            local newW = DF.Util:Clamp(sbDragStartSize + delta, L.sidebarMinW, L.sidebarMaxW)
+            sidebar:SetWidthLive(newW)
+        end,
+        onDragStop = function()
+            sidebar:SaveState()
+        end,
+    })
 
     ---------------------------------------------------------------------------
     -- Main area (right of sidebar splitter)
@@ -223,31 +213,22 @@ function MainWin:Create()
     btSplitHl:SetColorTexture(0.4, 0.6, 0.9, 0.3)
 
     -- Bottom panel drag resize
-    bottomSplitter:EnableMouse(true)
-    bottomSplitter:RegisterForDrag("LeftButton")
-    local btDragging = false
-    local btDragStart, btDragStartSize
-
-    bottomSplitter:SetScript("OnDragStart", function()
-        btDragging = true
-        local _, cy = GetCursorPosition()
-        local scale = bottomSplitter:GetEffectiveScale()
-        btDragStart = cy / scale
-        btDragStartSize = DF.bottomPanel.height
-    end)
-    bottomSplitter:SetScript("OnDragStop", function()
-        btDragging = false
-        DF.bottomPanel:SaveState()
-    end)
-    bottomSplitter:SetScript("OnUpdate", function()
-        if not btDragging then return end
-        local _, cy = GetCursorPosition()
-        local scale = bottomSplitter:GetEffectiveScale()
-        local delta = btDragStart - (cy / scale) -- inverted: drag down = larger
-        local newH = DF.Util:Clamp(btDragStartSize + delta, L.bottomMinH, L.bottomMaxH)
-        DF.bottomPanel:SetHeightLive(newH)
-        MainWin:UpdateLayout()
-    end)
+    local btDragStartSize
+    DF.Widgets:AttachSplitterDrag(bottomSplitter, {
+        axis = "y",
+        invert = true, -- drag down = larger
+        onDragStart = function()
+            btDragStartSize = DF.bottomPanel.height
+        end,
+        onDrag = function(delta)
+            local newH = DF.Util:Clamp(btDragStartSize + delta, L.bottomMinH, L.bottomMaxH)
+            DF.bottomPanel:SetHeightLive(newH)
+            MainWin:UpdateLayout()
+        end,
+        onDragStop = function()
+            DF.bottomPanel:SaveState()
+        end,
+    })
 
     ---------------------------------------------------------------------------
     -- Bottom Panel
@@ -262,14 +243,14 @@ function MainWin:Create()
     function MainWin:UpdateLayout()
         local bp = DF.bottomPanel
         local isCollapsed = bp.collapsed
-        local isConsoleActive = (DF.ModuleSystem:GetActive() == "Console")
+        local isFullArea = DF.ModuleSystem:IsActiveFullArea()
 
         editorContent:ClearAllPoints()
         bottomSplitter:ClearAllPoints()
         bp.frame:ClearAllPoints()
 
-        if isConsoleActive then
-            -- Console takes over: hide editor, bottom panel fills main area
+        if isFullArea then
+            -- Active module wants the bottom panel to take over: hide editor, bottom panel fills main area
             editorContent:Hide()
             bottomSplitter:Hide()
             bp.frame:SetPoint("TOPLEFT", mainArea, "TOPLEFT", 0, 0)

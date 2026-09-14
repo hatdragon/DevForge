@@ -18,6 +18,52 @@ DF.Widgets = DF.Widgets or {}
 
 local SPLITTER_W = DF.Layout.splitterWidth
 
+--[[
+    AttachSplitterDrag: wires drag-to-resize behavior onto a splitter button.
+    Tracks cursor movement along one axis and reports a size delta; the
+    caller owns clamping and applying it (and can bail out of persisting
+    until the drag ends).
+
+    opts.axis: "x" or "y"
+    opts.invert: flip delta sign (e.g. dragging down growing a panel below)
+    opts.onDragStart(): called when the drag begins
+    opts.onDrag(delta): called every frame during the drag with the pixel
+        delta since drag start
+    opts.onDragStop(): called once when the drag ends
+]]
+function DF.Widgets:AttachSplitterDrag(splitter, opts)
+    local axis = opts.axis or "x"
+    local isX = (axis == "x")
+    local dragging = false
+    local dragStart
+
+    splitter:EnableMouse(true)
+    splitter:RegisterForDrag("LeftButton")
+
+    splitter:SetScript("OnDragStart", function()
+        dragging = true
+        local cx, cy = GetCursorPosition()
+        local scale = splitter:GetEffectiveScale()
+        dragStart = isX and (cx / scale) or (cy / scale)
+        if opts.onDragStart then opts.onDragStart() end
+    end)
+
+    splitter:SetScript("OnDragStop", function()
+        dragging = false
+        if opts.onDragStop then opts.onDragStop() end
+    end)
+
+    splitter:SetScript("OnUpdate", function()
+        if not dragging then return end
+        local cx, cy = GetCursorPosition()
+        local scale = splitter:GetEffectiveScale()
+        local current = isX and (cx / scale) or (cy / scale)
+        local delta = current - dragStart
+        if opts.invert then delta = -delta end
+        if opts.onDrag then opts.onDrag(delta) end
+    end)
+end
+
 function DF.Widgets:CreateSplitPane(parent, opts)
     opts = opts or {}
     local direction = opts.direction or "horizontal"
@@ -78,45 +124,19 @@ function DF.Widgets:CreateSplitPane(parent, opts)
     splitterHl:SetColorTexture(0.4, 0.6, 0.9, 0.3)
 
     -- Drag behavior
-    local isDragging = false
-    local dragStart, dragStartSize
+    local dragStartSize
 
-    splitter:EnableMouse(true)
-    splitter:RegisterForDrag("LeftButton")
-
-    splitter:SetScript("OnDragStart", function()
-        isDragging = true
-        local cursorX, cursorY = GetCursorPosition()
-        local scale = splitter:GetEffectiveScale()
-        if isHorizontal then
-            dragStart = cursorX / scale
-        else
-            dragStart = cursorY / scale
-        end
-        dragStartSize = currentSize
-    end)
-
-    splitter:SetScript("OnDragStop", function()
-        isDragging = false
-    end)
-
-    splitter:SetScript("OnUpdate", function()
-        if not isDragging then return end
-        local cursorX, cursorY = GetCursorPosition()
-        local scale = splitter:GetEffectiveScale()
-
-        if isHorizontal then
-            local current = cursorX / scale
-            local delta = current - dragStart
+    DF.Widgets:AttachSplitterDrag(splitter, {
+        axis = isHorizontal and "x" or "y",
+        invert = not isHorizontal, -- vertical: dragging down grows the top panel
+        onDragStart = function()
+            dragStartSize = currentSize
+        end,
+        onDrag = function(delta)
             currentSize = DF.Util:Clamp(dragStartSize + delta, minSize, maxSize)
-        else
-            local current = cursorY / scale
-            local delta = dragStart - current
-            currentSize = DF.Util:Clamp(dragStartSize + delta, minSize, maxSize)
-        end
-
-        UpdateLayout()
-    end)
+            UpdateLayout()
+        end,
+    })
 
     UpdateLayout()
 

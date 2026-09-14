@@ -20,6 +20,34 @@ DF.SnippetTemplates.templates = {
     -- Addon Setup
     ---------------------------------------------------------------------------
     {
+        id = "setup_toc",
+        category = "Addon Setup",
+        name = "TOC File",
+        desc = "Standard .toc manifest: metadata, SavedVariables, and file load order",
+        placeholders = {
+            { token = "ADDON_NAME", label = "Addon Name", default = "MyAddon" },
+            { token = "TITLE", label = "Title", default = "My Addon" },
+            { token = "NOTES", label = "Notes", default = "A short description of what this addon does" },
+            { token = "AUTHOR", label = "Author", default = "Your Name" },
+            { token = "VERSION", label = "Version", default = "1.0.0" },
+            { token = "DB_NAME", label = "SavedVariable Name", default = "MyAddonDB" },
+        },
+        code = [[## Interface: 120100
+## Title: $TITLE
+## Notes: $NOTES
+## Author: $AUTHOR
+## Version: $VERSION
+## SavedVariables: $DB_NAME
+## IconTexture: Interface\Icons\INV_Misc_QuestionMark
+
+# Libraries (load first, in dependency order)
+# Libs\LibStub\LibStub.lua
+
+# Core files (load order matters -- each file can reference locals/functions
+# defined by files listed above it)
+$ADDON_NAME.lua]],
+    },
+    {
         id = "setup_basic_shell",
         category = "Addon Setup",
         name = "Basic Addon Shell",

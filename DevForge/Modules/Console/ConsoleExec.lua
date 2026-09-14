@@ -31,7 +31,7 @@ function Exec:TrySlashCommand(code)
         if hash_ChatTypeInfoList and hash_ChatTypeInfoList[cmd] then
             local chatType = hash_ChatTypeInfoList[cmd]
             if chatType then
-                SendChatMessage(args or "", chatType)
+                C_ChatInfo.SendChatMessage(args or "", chatType)
                 return true, {}
             end
         end

@@ -34,12 +34,6 @@ DevForge is designed to be **self-contained**, **dependency-light**, and adaptab
 - **Performance Utilities**  
   Lightweight memory and CPU diagnostics.
 
-### WeakAura → Addon Bridge (Retail Only)
-- **WA Importer**  
-  Converts WeakAura configurations into addon-backed logic.  
-  Intended as a bridge as Retail addon restrictions evolve.  
-  *Not required or loaded on Classic clients.*
-
 ---
 
 ## Supported Clients

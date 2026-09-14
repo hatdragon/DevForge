@@ -1,3 +1,9 @@
+2026-Sep-14 r1.1.0
+  Removed: WeakAuras converter (WAImporter module)
+    - Dropped WA export decode/codegen and the Editor's "WA Import" button
+  Fixed: SendChatMessage replaced with C_ChatInfo.SendChatMessage in Console
+    - Console now uses the non-deprecated chat API for /say, /yell, /whisper
+
 2026-Aug-12 r1.0.17
   Fixed: Interface version corrected to 120100 for patch 12.1.0 — the previous value
          made the addon show as incompatible in the addon manager

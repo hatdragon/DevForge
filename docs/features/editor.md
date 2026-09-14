@@ -56,18 +56,6 @@ This helps move from experimentation to real addon structure.
 
 ---
 
-### WeakAura Import (Retail Only)
-- Import WeakAura configurations
-- Translate aura logic into addon-backed code structures
-- Intended as a **bridge** as Retail addon restrictions evolve
-
-This feature:
-- Is optional
-- Is not required on Classic clients
-- Is not loaded when unavailable
-
----
-
 ## Relationship to the Console
 
 - **Editor**: write, organize, and manage code

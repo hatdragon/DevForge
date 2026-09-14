@@ -64,7 +64,6 @@ graph TB
         TBV["TableViewer<br/>Deep inspect tables"]
         CVR["CVarViewer<br/>CVar browser"]
         SNP["Editor<br/>Snippet CRUD + Templates"]
-        WAI["WAImporter<br/>WA decode + codegen"]
         EVT["Events<br/>Monitor + Index"]
         PERF["Performance<br/>Addon profiling"]
         MAC["MacroEditor<br/>Macro CRUD"]
@@ -177,7 +176,6 @@ stateDiagram-v2
 | `TableViewer`    | Tables       | (via IntegrationBus)  | 2     |
 | `CVarViewer`     | CVars        | (via sidebar)         | 2     |
 | `SnippetEditor`  | Editor       | `/df editor`          | 7     |
-| `WAImporter`     | WA Import    | (via Editor scaffold) | 3     |
 | `EventMonitor`   | Events       | `/df events`          | 4     |
 | `Performance`    | Perf         | `/df perf`            | 3     |
 | `MacroEditor`    | Macros       | `/df macros`          | 3     |
@@ -316,101 +314,6 @@ flowchart TD
     TREE --> DETAIL
     SEARCH --> DETAIL
 ```
-
----
-
-## WAImporter Pipeline
-
-```mermaid
-flowchart TD
-    subgraph Decode["WADecode.lua"]
-        INPUT["WA export string"]
-        BASE64["LibDeflate:DecodeForPrint()"]
-        DECOMP["LibDeflate:DecompressDeflate()"]
-        DESER["LibSerialize:Deserialize()"]
-        ANALYZE["AnalyzeAura()<br/>Normalize triggers, config,<br/>authorOptions, textures,<br/>conditions, custom code"]
-    end
-
-    subgraph CodeGen["WACodeGen.lua"]
-        TOC["GenerateTOC()<br/>.toc manifest"]
-        INIT["GenerateInit()<br/>SavedVars, load guards,<br/>per-aura frame code"]
-        OPTS["GenerateOptions()<br/>Settings API controls"]
-    end
-
-    subgraph AuraTypes["Per-Aura Code Generation"]
-        ICON["GenIconAura<br/>Frame + Texture + Cooldown"]
-        BAR["GenAuraBarAura<br/>StatusBar + timer OnUpdate"]
-        TEXT["GenTextAura<br/>FontString + dynamic text"]
-        TEXTURE["GenTextureAura<br/>Frame + Texture + rotation"]
-    end
-
-    subgraph Shared["Shared Emitters"]
-        ENV["EmitAuraEnv<br/>aura_env.config + DB overlay"]
-        STUBS["EmitWAStubs<br/>WA API compatibility shim"]
-        CUSTOM["EmitCustomCode<br/>init/onShow/onHide"]
-        TRIG["GenTriggerCode<br/>aura2/status/custom/event"]
-        ONUPD["EmitCustomTriggerOnUpdate<br/>Throttled polling + cursor follow"]
-        COND["BuildConditionLines<br/>Color/fontSize conditions"]
-        TEXCALL["TextureCall<br/>Atlas vs path + WA texture subs"]
-    end
-
-    subgraph Options["Options Generation"]
-        SLIDER["EmitRangeOption<br/>Settings.CreateSlider"]
-        TOGGLE["EmitToggleOption<br/>Settings.CreateCheckbox"]
-        SELECT["EmitSelectOption<br/>Settings.CreateDropdown"]
-        COLOR["EmitColorEditor<br/>Standalone floating panel"]
-        DESC["EmitDescriptionOption<br/>Section headers"]
-    end
-
-    INPUT --> BASE64 --> DECOMP --> DESER --> ANALYZE
-    ANALYZE --> TOC
-    ANALYZE --> INIT
-    ANALYZE --> OPTS
-
-    INIT --> AuraTypes
-    AuraTypes --> Shared
-
-    OPTS --> Options
-
-    style Decode fill:#1e2a3a,stroke:#4a6a8a
-    style CodeGen fill:#1e2a3a,stroke:#4a6a8a
-```
-
-### WAImporter aura_env & Config Flow
-
-```
-WA authorOptions (decoded)
-    |
-    v
-ExtractAuthorOptions()       -- normalize to {type, key, name, default, ...}
-ExtractConfig()              -- raw config key/value pairs (incl. table values)
-    |
-    v
-CollectConfigDefaults()      -- merge authorOptions defaults + raw config fallback
-    |
-    v
-GenerateInit():
-    db.config.key = default   -- per-key if-nil initialization in SavedVariables
-    aura_env.config = {...}   -- baked defaults inside each aura's do-block
-    db.config overlay         -- for k,v in pairs(db.config) do aura_env.config[k] = v end
-    |
-    v
-GenerateOptions():
-    Settings API controls     -- range/toggle/select bind to db.config[key]
-    Color editor panel        -- standalone BackdropTemplate frame with swatches
-    ns.RefreshConfig()        -- no-op stub; config changes require /reload
-```
-
-### WA Texture Substitution
-
-| WA Bundled Texture      | Substitution                          |
-|-------------------------|---------------------------------------|
-| `Circle_Smooth2`        | `Interface\COMMON\Indicator-Gray`     |
-| `Circle_Smooth`         | `Interface\COMMON\Indicator-Gray`     |
-| `Square_White`          | `Interface\BUTTONS\WHITE8X8`          |
-| (unknown WA texture)    | `INV_Misc_QuestionMark` + TODO comment|
-
----
 
 ## Event Monitor Architecture
 
@@ -864,11 +767,6 @@ DevForge/                          (81 files, ~34,000 lines)
     FrameBuilder.lua               Visual frame code generator
     AddonScaffold.lua              Full addon project generator
     SnippetEditor.lua              Orchestrator with Run/Save/Delete
-
-  Modules/WAImporter/              WeakAuras converter (3 files)
-    WADecode.lua                   Decode + analyze WA export strings
-    WACodeGen.lua                  Generate standalone addon from analysis
-    WAImporter.lua                 Import dialog UI
 
   Modules/EventMonitor/            Event Tools (4 files)
     EventMonitorLog.lua            Ring buffer + blacklist/whitelist

@@ -3,7 +3,7 @@
 ## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, sounds, performance
 ## Author: hatdragon
 ## Contributors: 
-## Version: r1.0.17
+## Version: r1.1.0
 
 ## SavedVariables: DevForgeDB
 ## IconTexture: Interface\Icons\INV_Gizmo_02
@@ -106,11 +106,6 @@ Modules\SnippetEditor\TemplateBrowser.lua
 Modules\SnippetEditor\FrameBuilder.lua
 Modules\SnippetEditor\AddonScaffold.lua
 Modules\SnippetEditor\SnippetEditor.lua
-
-# WA Importer Module
-Modules\WAImporter\WADecode.lua
-Modules\WAImporter\WACodeGen.lua
-Modules\WAImporter\WAImporter.lua
 
 # Event Monitor Module
 Modules\EventMonitor\EventMonitorLog.lua

@@ -210,11 +210,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     local scaffoldBtn = DF.Widgets:CreateButton(toolbar, "Scaffold", 70)
     scaffoldBtn:SetPoint("LEFT", frameBuilderBtn, "RIGHT", 4, 0)
 
-    local waImportBtn = DF.Widgets:CreateButton(toolbar, "WA Import", 80)
-    waImportBtn:SetPoint("LEFT", scaffoldBtn, "RIGHT", 4, 0)
-
     local runProjectBtn = DF.Widgets:CreateButton(toolbar, "Run Project", 80)
-    runProjectBtn:SetPoint("LEFT", waImportBtn, "RIGHT", 4, 0)
+    runProjectBtn:SetPoint("LEFT", scaffoldBtn, "RIGHT", 4, 0)
 
     local saveBtn = DF.Widgets:CreateButton(toolbar, "Save", 55)
     saveBtn:SetPoint("RIGHT", -2, 0)
@@ -596,23 +593,6 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             SetSidebarTab("snippets")
             snippetList:Refresh()
             -- Load the first child file
-            local children = DF.SnippetStore:GetChildren(project.id)
-            if #children > 0 then
-                LoadSnippet(children[1].id)
-            end
-        end)
-    end)
-
-    waImportBtn:SetScript("OnClick", function()
-        DF.WAImporter:Show(function(files, projectName)
-            SaveCurrent()
-            local project = DF.SnippetStore:CreateProject(projectName)
-            for _, file in ipairs(files) do
-                local s = DF.SnippetStore:Create(file.name, project.id)
-                DF.SnippetStore:Save(s.id, s.name, file.code)
-            end
-            SetSidebarTab("snippets")
-            snippetList:Refresh()
             local children = DF.SnippetStore:GetChildren(project.id)
             if #children > 0 then
                 LoadSnippet(children[1].id)

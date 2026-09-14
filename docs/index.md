@@ -32,7 +32,7 @@ DevForge operates entirely in-game, providing interactive tooling that reflects 
 
 ![DevForge Editor]({{ site.baseurl }}/assets/images/editor.png)
 
-Write, organize, validate, and evolve Lua code directly in-game, including snippet management, project scaffolding, and optional WeakAura import tooling (Retail).
+Write, organize, validate, and evolve Lua code directly in-game, including snippet management and project scaffolding.
 
 ---
 
@@ -52,7 +52,7 @@ Each feature is documented individually with screenshots and usage notes.
 
 ### Core Tooling
 - **[Code Editor & Project Tools](features/editor.md)**  
-  Manage snippets and templates, scaffold addon projects, and import WeakAura logic (Retail).
+  Manage snippets and templates, and scaffold addon projects.
 
 - **[Interactive Lua Console](features/console.md)**  
   Execute Lua snippets, inspect runtime state, and experiment safely in-game.

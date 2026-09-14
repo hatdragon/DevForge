@@ -31,6 +31,7 @@
 Libs\LibStub\LibStub.lua
 Libs\LibDeflate\LibDeflate.lua
 Libs\LibSerialize\LibSerialize.lua
+Libs\FAIAP\FAIAP.lua
 
 # Core
 Core\Constants.lua

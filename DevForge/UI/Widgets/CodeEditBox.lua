@@ -2,10 +2,22 @@ local _, DF = ...
 
 DF.Widgets = DF.Widgets or {}
 
+-- Lua syntax colors for the vendored FAIAP indent/highlight library
+-- (Libs/FAIAP/FAIAP.lua), reusing the same palette as the rest of the addon.
+local FAIAP_COLORS = {
+    [DF.Indent.tokens.TOKEN_KEYWORD] = DF.Colors.keyword,
+    [DF.Indent.tokens.TOKEN_STRING] = DF.Colors.string,
+    [DF.Indent.tokens.TOKEN_NUMBER] = DF.Colors.number,
+    [DF.Indent.tokens.TOKEN_COMMENT_SHORT] = DF.Colors.comment,
+    [DF.Indent.tokens.TOKEN_COMMENT_LONG] = DF.Colors.comment,
+    [0] = "|r",
+}
+
 function DF.Widgets:CreateCodeEditBox(parent, opts)
     opts = opts or {}
     local multiLine = opts.multiLine ~= false
     local readOnly = opts.readOnly or false
+    local highlightEnabled = multiLine and opts.syntaxHighlight ~= false
 
     local container = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     DF.Theme:ApplyDarkPanel(container, true)
@@ -73,8 +85,9 @@ function DF.Widgets:CreateCodeEditBox(parent, opts)
         end)
     end
 
-    -- Tab key inserts spaces
-    if multiLine and not readOnly then
+    -- Tab key inserts spaces (FAIAP takes over Tab for context-aware indent
+    -- when syntax highlighting is enabled, so skip this to avoid double-indent)
+    if multiLine and not readOnly and not highlightEnabled then
         editbox:SetScript("OnTabPressed", function(self)
             self:Insert("    ")
         end)
@@ -305,6 +318,16 @@ function DF.Widgets:CreateCodeEditBox(parent, opts)
             local cb = widget._onTextChangedCallback
             if cb then cb(eb:GetText(), userInput) end
         end)
+    end
+
+    -- Enable syntax highlighting last, so it chains after our own
+    -- OnTextChanged/OnTabPressed hooks rather than being overwritten by them.
+    -- Explicit tabWidth forces space-based indent (a non-nil/non-false
+    -- tabWidth picks FAIAP's fillWithSpaces over fillWithTabs) -- our code
+    -- font doesn't have a glyph for literal tab characters, so they render
+    -- as boxes.
+    if highlightEnabled then
+        DF.Indent.enable(editbox, FAIAP_COLORS, 4)
     end
 
     return widget

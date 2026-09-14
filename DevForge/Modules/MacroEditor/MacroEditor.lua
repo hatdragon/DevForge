@@ -174,13 +174,13 @@ DF.ModuleSystem:Register("MacroEditor", function(sidebarParent, editorParent)
     newBtn:SetScript("OnClick", function()
         SaveCurrent()
         local numAccount = DF.MacroStore:GetCounts()
-        local maxAccount = MAX_ACCOUNT_MACROS
+        local maxAccount, maxCharacter = DF.MacroStore:GetMaxCounts()
         local newIndex
         if numAccount < maxAccount then
             newIndex = DF.MacroStore:Create("New Macro", nil, "", false)
         else
             local _, numChar = DF.MacroStore:GetCounts()
-            if numChar < MAX_CHARACTER_MACROS then
+            if numChar < maxCharacter then
                 newIndex = DF.MacroStore:Create("New Macro", nil, "", true)
             else
                 outputPane:Clear()

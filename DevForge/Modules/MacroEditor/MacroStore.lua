@@ -4,6 +4,11 @@ DF.MacroStore = {}
 
 local Store = DF.MacroStore
 
+-- Both globals are nil as of patch 12.1; these are the account/character
+-- macro block sizes the client has always used, kept as a local fallback.
+local MAX_ACCOUNT_MACROS = MAX_ACCOUNT_MACROS or 120
+local MAX_CHARACTER_MACROS = MAX_CHARACTER_MACROS or 18
+
 function Store:Init()
     -- Nothing to initialize; macros are stored by the WoW client
 end

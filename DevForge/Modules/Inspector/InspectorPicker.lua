@@ -85,10 +85,14 @@ local function BuildFrameStack()
     local f = EnumerateFrames()
     while f do
         if f ~= pickerFrame then
-            local okVis, vis = pcall(f.IsVisible, f)
-            if okVis and vis then
-                local okOver, over = pcall(f.IsMouseOver, f)
-                if okOver and over then
+            -- Some protected frames (secure unit frames, etc.) return a
+            -- "secret" value here, which can't be boolean-tested directly
+            -- from tainted addon code -- SecretGuard already replaces those
+            -- with nil, so treat as unknown/false rather than erroring.
+            local vis = DF.SecretGuard:SafeGet(f, "IsVisible")
+            if vis then
+                local over = DF.SecretGuard:SafeGet(f, "IsMouseOver")
+                if over then
                     -- Apply noise filter
                     local dominated = false
                     if not showFiltered then
@@ -140,8 +144,7 @@ local function GetFrameType(frame)
 end
 
 local function IsMouseEnabled(frame)
-    local ok, enabled = pcall(frame.IsMouseEnabled, frame)
-    return ok and enabled
+    return DF.SecretGuard:SafeGet(frame, "IsMouseEnabled") and true or false
 end
 
 -- Build the tooltip text showing the frame stack

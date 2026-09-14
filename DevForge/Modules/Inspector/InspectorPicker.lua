@@ -8,6 +8,19 @@ local pickerFrame = nil
 local onPick = nil
 local onCancel = nil
 
+-- Cache once whether this client has the secret-value API (WoW 12.0+)
+-- instead of re-checking per call -- BuildFrameStack below runs every
+-- 0.1s over every frame in the UI, so per-call overhead matters here.
+-- issecretvalue() is documented as safe to call on any value including
+-- secret ones, so it's called directly (no pcall needed).
+local HAS_SECRET_API = type(issecretvalue) == "function"
+
+local function SafeBool(ok, value)
+    if not ok then return false end
+    if HAS_SECRET_API and issecretvalue(value) then return false end
+    return value and true or false
+end
+
 -- Frame stack state
 local frameStack = {}   -- all frames under cursor, sorted top-to-bottom
 local stackIndex = 1    -- which frame in the stack is selected
@@ -87,12 +100,12 @@ local function BuildFrameStack()
         if f ~= pickerFrame then
             -- Some protected frames (secure unit frames, etc.) return a
             -- "secret" value here, which can't be boolean-tested directly
-            -- from tainted addon code -- SecretGuard already replaces those
-            -- with nil, so treat as unknown/false rather than erroring.
-            local vis = DF.SecretGuard:SafeGet(f, "IsVisible")
-            if vis then
-                local over = DF.SecretGuard:SafeGet(f, "IsMouseOver")
-                if over then
+            -- from tainted addon code -- SafeBool treats that as unknown/
+            -- false rather than erroring.
+            local okVis, vis = pcall(f.IsVisible, f)
+            if SafeBool(okVis, vis) then
+                local okOver, over = pcall(f.IsMouseOver, f)
+                if SafeBool(okOver, over) then
                     -- Apply noise filter
                     local dominated = false
                     if not showFiltered then
@@ -144,7 +157,8 @@ local function GetFrameType(frame)
 end
 
 local function IsMouseEnabled(frame)
-    return DF.SecretGuard:SafeGet(frame, "IsMouseEnabled") and true or false
+    local ok, enabled = pcall(frame.IsMouseEnabled, frame)
+    return SafeBool(ok, enabled)
 end
 
 -- Build the tooltip text showing the frame stack

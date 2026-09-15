@@ -83,10 +83,20 @@ function Highlight:Show(targetFrame)
     width = width or 0
     height = height or 0
 
-    highlightFrame:ClearAllPoints()
-    highlightFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, bottom)
-    highlightFrame:SetSize(width, height)
-    highlightFrame:Show()
+    -- A frame covering the whole screen (UIParent chief among them) would
+    -- turn the highlight into a full-screen tint that buries everything,
+    -- including DevForge's own window (this box renders at TOOLTIP strata,
+    -- above the window's HIGH strata). Skip the box for those; the label
+    -- below still shows what's selected.
+    local isFullscreen = DF.Util:IsFullscreenFrame(targetFrame)
+    if isFullscreen then
+        highlightFrame:Hide()
+    else
+        highlightFrame:ClearAllPoints()
+        highlightFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, bottom)
+        highlightFrame:SetSize(width, height)
+        highlightFrame:Show()
+    end
 
     -- Label: use GetDebugName for full path (like /fstack)
     local name = ""
@@ -106,6 +116,9 @@ function Highlight:Show(targetFrame)
     local objType = (typeOk and typeResult) or "?"
 
     local labelStr = name .. "  (" .. objType .. ")"
+    if isFullscreen then
+        labelStr = labelStr .. "  |cFF888888(covers screen, no overlay box)|r"
+    end
     labelFrame.text:SetText(labelStr)
 
     -- Size from string width, with minimum and fallback
@@ -116,13 +129,18 @@ function Highlight:Show(targetFrame)
     labelFrame:SetSize(math.max(80, textW + 20), 22)
     labelFrame:ClearAllPoints()
 
-    -- Position above the highlight, but keep on screen
-    local hlTop = (bottom or 0) + (height or 0)
-    local screenH = UIParent:GetHeight()
-    if hlTop + 24 > screenH then
-        labelFrame:SetPoint("TOPLEFT", highlightFrame, "BOTTOMLEFT", 0, -2)
+    if isFullscreen then
+        -- No highlight box to anchor to -- park it at the top of the screen
+        labelFrame:SetPoint("TOP", UIParent, "TOP", 0, -4)
     else
-        labelFrame:SetPoint("BOTTOMLEFT", highlightFrame, "TOPLEFT", 0, 2)
+        -- Position above the highlight, but keep on screen
+        local hlTop = (bottom or 0) + (height or 0)
+        local screenH = UIParent:GetHeight()
+        if hlTop + 24 > screenH then
+            labelFrame:SetPoint("TOPLEFT", highlightFrame, "BOTTOMLEFT", 0, -2)
+        else
+            labelFrame:SetPoint("BOTTOMLEFT", highlightFrame, "TOPLEFT", 0, 2)
+        end
     end
     labelFrame:Show()
 end

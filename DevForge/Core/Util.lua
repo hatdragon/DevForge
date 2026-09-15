@@ -159,6 +159,17 @@ function Util:Clamp(val, minVal, maxVal)
     return math.max(minVal, math.min(maxVal, val))
 end
 
+-- Whether a frame's bounds effectively cover the whole screen (UIParent
+-- chief among them). Used to avoid overlay effects (highlight boxes, etc.)
+-- that would blanket everything instead of pointing at something specific.
+function Util:IsFullscreenFrame(frame)
+    local okW, w = pcall(frame.GetWidth, frame)
+    local okH, h = pcall(frame.GetHeight, frame)
+    if not (okW and okH and w and h) then return false end
+    local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
+    return w >= screenW - 2 and h >= screenH - 2
+end
+
 -- Hook Ctrl+S (or Cmd+S on Mac) on a keyboard-enabled frame to fire a callback
 function Util:HookSaveShortcut(frame, callback)
     frame:HookScript("OnKeyDown", function(_, key)

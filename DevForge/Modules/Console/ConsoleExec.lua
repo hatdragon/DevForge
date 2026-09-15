@@ -47,7 +47,8 @@ function Exec:TrySlashCommand(code)
     print = function(...)
         local parts = {}
         for i = 1, select("#", ...) do
-            parts[i] = tostring(select(i, ...))
+            local v = select(i, ...)
+            parts[i] = DF.SecretGuard:FormatValue(v) or tostring(v)
         end
         prints[#prints + 1] = table.concat(parts, "    ")
     end
@@ -131,7 +132,8 @@ function Exec:Execute(code, printCapture)
         capturedPrint = function(...)
             local parts = {}
             for i = 1, select("#", ...) do
-                parts[i] = tostring(select(i, ...))
+                local v = select(i, ...)
+                parts[i] = DF.SecretGuard:FormatValue(v) or tostring(v)
             end
             local line = table.concat(parts, "    ")
             if not doneExecuting then
@@ -239,7 +241,8 @@ function Exec:ExecuteFile(code, ...)
     local capturedPrint = function(...)
         local parts = {}
         for i = 1, select("#", ...) do
-            parts[i] = tostring(select(i, ...))
+            local v = select(i, ...)
+            parts[i] = DF.SecretGuard:FormatValue(v) or tostring(v)
         end
         local line = table.concat(parts, "    ")
         if not doneExecuting then

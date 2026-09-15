@@ -857,7 +857,8 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
             print = function(...)
                 local parts = {}
                 for i = 1, select("#", ...) do
-                    parts[i] = tostring(select(i, ...))
+                    local v = select(i, ...)
+                    parts[i] = DF.SecretGuard:FormatValue(v) or tostring(v)
                 end
                 prints[#prints + 1] = table.concat(parts, "    ")
             end

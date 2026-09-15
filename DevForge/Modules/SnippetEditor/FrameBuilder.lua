@@ -339,7 +339,12 @@ local function GetDialog()
         end
 
         previewFrame = CreateFrame(frameType, "DevForgeFrameBuilderPreview", UIParent, "BackdropTemplate")
-        previewFrame:SetFrameStrata("HIGH")
+        -- TOOLTIP strata (same choice InspectorHighlight.lua makes) so the
+        -- preview always renders above everything, including the builder
+        -- dialog itself (FULLSCREEN_DIALOG) -- the default anchor (CENTER,
+        -- 0,0) sits exactly where the dialog does, so a lower strata here
+        -- would leave the preview invisible, hidden behind our own window.
+        previewFrame:SetFrameStrata("TOOLTIP")
         currentPreviewType = frameType
 
         previewTitleBar = CreateFrame("Frame", nil, previewFrame)
@@ -363,7 +368,7 @@ local function GetDialog()
 
         -- Label chip: same visual recipe as InspectorHighlight.lua's labelFrame
         previewLabel = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        previewLabel:SetFrameStrata("HIGH")
+        previewLabel:SetFrameStrata("TOOLTIP")
         previewLabel:SetFrameLevel(previewFrame:GetFrameLevel() + 1)
         previewLabel:SetBackdrop({
             bgFile = "Interface\\ChatFrame\\ChatFrameBackground",

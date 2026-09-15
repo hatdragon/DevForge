@@ -250,6 +250,12 @@ local function GetDialog()
         for _, c in pairs({stale:GetChildren()}) do c:Hide(); c:EnableMouse(false) end
     end
 
+    -- Same cleanup for the live preview frame (see RecreatePreviewFrame below)
+    local stalePreview = _G["DevForgeFrameBuilderPreview"]
+    if stalePreview then
+        stalePreview:Hide(); stalePreview:EnableMouse(false)
+    end
+
     local frame = CreateFrame("Frame", "DevForgeFrameBuilder", UIParent, "BackdropTemplate")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetSize(480, 540)
@@ -302,11 +308,166 @@ local function GetDialog()
         clamped = false,
         closeBtn = false,
         titleBar = false,
+        showPreview = true,
         scriptOnShow = false,
         scriptOnHide = false,
         scriptOnEvent = false,
         scriptOnUpdate = false,
     }
+
+    ---------------------------------------------------------------------------
+    -- Live preview: an actual frame configured directly from the same
+    -- state, alongside the generated code text
+    ---------------------------------------------------------------------------
+    local previewFrame = nil
+    local previewTitleBar, previewTitleText = nil, nil
+    local previewCloseBtn = nil
+    local previewLabel, previewLabelText = nil, nil
+    local currentPreviewType = nil
+
+    -- WoW has no API to change an existing frame's widget type (Frame vs
+    -- Button vs StatusBar vs EditBox vs ScrollFrame is fixed at CreateFrame
+    -- time), so a Frame Type change retires the old preview object and
+    -- creates a new one of the right type -- same reassign-the-global-name
+    -- idiom this file already uses for the dialog frame itself.
+    local function RecreatePreviewFrame(frameType)
+        if previewFrame then
+            previewFrame:Hide()
+            previewFrame:SetScript("OnDragStart", nil)
+            previewFrame:SetScript("OnDragStop", nil)
+            previewFrame:SetParent(nil)
+        end
+
+        previewFrame = CreateFrame(frameType, "DevForgeFrameBuilderPreview", UIParent, "BackdropTemplate")
+        previewFrame:SetFrameStrata("HIGH")
+        currentPreviewType = frameType
+
+        previewTitleBar = CreateFrame("Frame", nil, previewFrame)
+        previewTitleBar:SetHeight(24)
+        previewTitleBar:SetPoint("TOPLEFT", 0, 0)
+        previewTitleBar:SetPoint("TOPRIGHT", 0, 0)
+        local titleBg = previewTitleBar:CreateTexture(nil, "BACKGROUND")
+        titleBg:SetAllPoints()
+        titleBg:SetColorTexture(0.15, 0.15, 0.17, 1)
+        previewTitleText = previewTitleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        previewTitleText:SetPoint("LEFT", 8, 0)
+        previewTitleBar:Hide()
+
+        previewCloseBtn = CreateFrame("Button", nil, previewFrame)
+        previewCloseBtn:SetSize(20, 20)
+        previewCloseBtn:SetPoint("TOPRIGHT", -4, -4)
+        previewCloseBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+        previewCloseBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+        previewCloseBtn:SetScript("OnClick", function() previewFrame:Hide() end)
+        previewCloseBtn:Hide()
+
+        -- Label chip: same visual recipe as InspectorHighlight.lua's labelFrame
+        previewLabel = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        previewLabel:SetFrameStrata("HIGH")
+        previewLabel:SetFrameLevel(previewFrame:GetFrameLevel() + 1)
+        previewLabel:SetBackdrop({
+            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        })
+        previewLabel:SetBackdropColor(0.05, 0.05, 0.08, 0.95)
+        previewLabel:SetBackdropBorderColor(0.3, 0.6, 1.0, 0.8)
+        previewLabelText = previewLabel:CreateFontString(nil, "OVERLAY")
+        previewLabelText:SetFontObject(DF.Theme:UIFont())
+        previewLabelText:SetPoint("CENTER", 0, 0)
+        previewLabelText:SetTextColor(0.7, 0.85, 1, 1)
+        previewLabel:Hide()
+    end
+
+    -- Apply the current form state to the live preview frame (mirrors
+    -- GenerateCode, but calling real WoW API instead of emitting text)
+    local function ApplyPreview(previewState)
+        if previewState.frameType ~= currentPreviewType then
+            RecreatePreviewFrame(previewState.frameType)
+        end
+
+        if not previewState.showPreview then
+            previewFrame:Hide()
+            previewLabel:Hide()
+            return
+        end
+
+        local parentOk, parentFrame = pcall(function()
+            return (previewState.parent ~= "" and _G[previewState.parent]) or UIParent
+        end)
+        if not parentOk or type(parentFrame) ~= "table" or not parentFrame.GetObjectType then
+            parentFrame = UIParent
+        end
+        if not pcall(previewFrame.SetParent, previewFrame, parentFrame) then
+            parentFrame = UIParent
+            pcall(previewFrame.SetParent, previewFrame, parentFrame)
+        end
+
+        previewFrame:ClearAllPoints()
+        previewFrame:SetPoint(previewState.anchor or "CENTER", previewState.offsetX or 0, previewState.offsetY or 0)
+        previewFrame:SetSize(math.max(1, previewState.width or 200), math.max(1, previewState.height or 150))
+
+        if previewState.backdrop then
+            previewFrame:SetBackdrop({
+                bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                tile = true, tileSize = 16, edgeSize = 16,
+                insets = { left = 4, right = 4, top = 4, bottom = 4 },
+            })
+            previewFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+            previewFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        else
+            previewFrame:SetBackdrop(nil)
+        end
+
+        previewFrame:SetMovable(previewState.movable and true or false)
+        if previewState.movable then
+            previewFrame:EnableMouse(true)
+            previewFrame:RegisterForDrag("LeftButton")
+            previewFrame:SetScript("OnDragStart", previewFrame.StartMoving)
+            previewFrame:SetScript("OnDragStop", previewFrame.StopMovingOrSizing)
+        else
+            previewFrame:RegisterForDrag()
+            previewFrame:SetScript("OnDragStart", nil)
+            previewFrame:SetScript("OnDragStop", nil)
+        end
+
+        previewFrame:SetResizable(previewState.resizable and true or false)
+        previewFrame:SetClampedToScreen(previewState.clamped and true or false)
+
+        if previewState.titleBar then
+            previewTitleText:SetText(previewState.globalName ~= "" and previewState.globalName or "My Frame")
+            previewTitleBar:Show()
+        else
+            previewTitleBar:Hide()
+        end
+        previewCloseBtn:SetShown(previewState.closeBtn and true or false)
+
+        previewFrame:Show()
+
+        previewLabelText:SetText("Preview: " .. (previewState.globalName ~= "" and previewState.globalName or previewState.frameType))
+        local textW = previewLabelText:GetStringWidth()
+        if not textW or textW < 10 then textW = 100 end
+        previewLabel:SetSize(math.max(80, textW + 20), 22)
+        previewLabel:ClearAllPoints()
+
+        local top = previewFrame:GetTop()
+        local screenH = UIParent:GetHeight()
+        if top and top + 24 > screenH then
+            previewLabel:SetPoint("TOPLEFT", previewFrame, "BOTTOMLEFT", 0, -2)
+        else
+            previewLabel:SetPoint("BOTTOMLEFT", previewFrame, "TOPLEFT", 0, 2)
+        end
+        previewLabel:Show()
+    end
+
+    local function HidePreview()
+        if previewFrame then previewFrame:Hide() end
+        if previewLabel then previewLabel:Hide() end
+    end
 
     local insertCallback = nil
     local codePreview = nil
@@ -319,6 +480,7 @@ local function GetDialog()
             if codePreview then
                 codePreview:SetText(GenerateCode(state))
             end
+            ApplyPreview(state)
         end)
     end
 
@@ -432,6 +594,7 @@ local function GetDialog()
         { key = "clamped",   label = "Clamped" },
         { key = "closeBtn",  label = "Close button" },
         { key = "titleBar",  label = "Title bar" },
+        { key = "showPreview", label = "Show Preview" },
     }
 
     for i, feat in ipairs(features) do
@@ -441,6 +604,7 @@ local function GetDialog()
             state[feat.key] = checked
             OnFieldChanged()
         end)
+        cb:SetChecked(state[feat.key])
         cb:SetPoint("TOPLEFT", 8 + col * 200, -(yOff + row * 18))
     end
     yOff = yOff + math.ceil(#features / 2) * 18 + 6
@@ -478,13 +642,17 @@ local function GetDialog()
     codePreview.frame:SetPoint("TOPLEFT", formArea, "BOTTOMLEFT", 0, -4)
     codePreview.frame:SetPoint("BOTTOMRIGHT", -12, 40)
 
-    -- Initial code generation
+    -- Initial code generation + live preview
     codePreview:SetText(GenerateCode(state))
+    ApplyPreview(state)
 
     -- Bottom buttons
     local cancelBtn = DF.Widgets:CreateButton(frame, "Cancel", 60)
     cancelBtn:SetPoint("BOTTOMRIGHT", -12, 12)
-    cancelBtn:SetScript("OnClick", function() frame:Hide() end)
+    cancelBtn:SetScript("OnClick", function()
+        frame:Hide()
+        HidePreview()
+    end)
 
     local copyBtn = DF.Widgets:CreateButton(frame, "Copy", 55)
     copyBtn:SetPoint("RIGHT", cancelBtn, "LEFT", -4, 0)
@@ -502,6 +670,7 @@ local function GetDialog()
         if code and code ~= "" and insertCallback then
             insertCallback(code, state.globalName ~= "" and state.globalName or "Frame Builder")
             frame:Hide()
+            HidePreview()
         end
     end)
 
@@ -511,7 +680,10 @@ local function GetDialog()
         codePreview = codePreview,
         insertCallback = nil,
         setInsertCallback = function(self, cb) insertCallback = cb end,
-        regenerate = function() codePreview:SetText(GenerateCode(state)) end,
+        regenerate = function()
+            codePreview:SetText(GenerateCode(state))
+            ApplyPreview(state)
+        end,
     }
 
     return dialog

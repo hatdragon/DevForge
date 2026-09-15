@@ -25,6 +25,8 @@ end
 local frameStack = {}   -- all frames under cursor, sorted top-to-bottom
 local stackIndex = 1    -- which frame in the stack is selected
 local showFiltered = false  -- toggle to show noise frames
+local scanMode = false  -- false = live single-frame mode, true = frozen full-scan snapshot
+local liveTarget = nil  -- frame currently highlighted in live mode
 
 local STRATA_ORDER = {
     WORLD = 0, BACKGROUND = 1, LOW = 2, MEDIUM = 3,
@@ -32,13 +34,10 @@ local STRATA_ORDER = {
     FULLSCREEN_DIALOG = 7, TOOLTIP = 8,
 }
 
--- BuildFrameStack walks every frame object in the client (EnumerateFrames
--- has no faster alternative that preserves full geometric/occlusion-
--- ignoring stack semantics -- GetMouseFoci() looked like one but actually
--- resolves z-order-aware event routing, a different question, and only
--- ever returns our own picker overlay). Kept well below 10Hz so the walk's
--- cost stays bounded regardless of total frame count.
-local UPDATE_INTERVAL = 0.3
+-- Live-mode polling interval. Cheap now that it drives GetLiveTarget
+-- (native GetMouseFoci) instead of the full EnumerateFrames walk, so this
+-- can run closer to every frame without cost concerns.
+local UPDATE_INTERVAL = 0.05
 
 -- Frames filtered out by default (common noise)
 local FILTERED_EXACT = {
@@ -95,22 +94,16 @@ local function IsFilteredFrame(frame, name)
     return false
 end
 
--- Diagnostics from the last BuildFrameStack call, shown in the picker
--- display so we can see real numbers instead of guessing at the cost.
-local lastScanCount = 0
-local lastScanMs = 0
-
--- Collect all visible frames under the cursor
+-- Collect all visible frames under the cursor. Expensive (walks every
+-- frame object in the client) -- only run on an explicit user action
+-- (Space, in the picker below), never continuously.
 local function BuildFrameStack()
-    local startTime = debugprofilestop()
-    local scanned = 0
     local stack = {}
 
     if not EnumerateFrames then return stack end
 
     local f = EnumerateFrames()
     while f do
-        scanned = scanned + 1
         if f ~= pickerFrame then
             -- Some protected frames (secure unit frames, etc.) return a
             -- "secret" value here, which can't be boolean-tested directly
@@ -142,9 +135,6 @@ local function BuildFrameStack()
         f = EnumerateFrames(f)
     end
 
-    lastScanCount = scanned
-    lastScanMs = debugprofilestop() - startTime
-
     -- Sort: highest strata first, then highest level
     table.sort(stack, function(a, b)
         if a.strata ~= b.strata then return a.strata > b.strata end
@@ -152,6 +142,36 @@ local function BuildFrameStack()
     end)
 
     return stack
+end
+
+-- Fast, continuous "what's on top" resolution using the native mouse-focus
+-- API instead of walking every frame. Only ever returns the single topmost
+-- real frame under the cursor (not the full occlusion stack -- that's what
+-- BuildFrameStack/Space is for), skipping the picker's own capture overlay
+-- (which requires SetPropagateMouseMotion(true) on that overlay to be
+-- visible to GetMouseFoci at all) and applying the same noise filter.
+local function GetLiveTarget()
+    if not GetMouseFoci then return nil end
+    local foci = GetMouseFoci()
+
+    local isOwnFrame = function(f)
+        return f == pickerFrame or f == pickerFrame.stackPanel
+    end
+
+    local fallback = nil
+    for _, f in ipairs(foci) do
+        if not isOwnFrame(f) then
+            if not fallback then fallback = f end
+            if showFiltered then
+                return f
+            end
+            local okN, fname = pcall(f.GetName, f)
+            if not IsFilteredFrame(f, okN and fname or nil) then
+                return f
+            end
+        end
+    end
+    return fallback
 end
 
 -- Get display name for a frame (matches /fstack behavior)
@@ -222,7 +242,6 @@ local function UpdateStackDisplay()
         or "|cFF888888Tab: Show noise frames (UIParent, WorldFrame, etc.)|r"
     lines[#lines + 1] = "|cFF888888Scroll to cycle  |  Click to select  |  Esc/Right-click to cancel|r"
     lines[#lines + 1] = filterLabel
-    lines[#lines + 1] = string.format("|cFF555555Scanned %d frames in %.1fms|r", lastScanCount, lastScanMs)
 
     pickerFrame.stackText:SetText(table.concat(lines, "\n"))
 
@@ -230,6 +249,37 @@ local function UpdateStackDisplay()
     local textH = pickerFrame.stackText:GetStringHeight()
     local textW = pickerFrame.stackText:GetStringWidth()
     if (not textH or textH < 20) then textH = 200 end
+    if (not textW or textW < 100) then textW = 350 end
+    pickerFrame.stackPanel:SetSize(math.min(500, textW + 24), textH + 16)
+end
+
+-- Single-line display for live mode (just the topmost real frame)
+local function UpdateLiveDisplay(target)
+    if not pickerFrame then return end
+
+    local lines = {}
+    if not target then
+        lines[#lines + 1] = "|cFF808080(no frame)|r"
+    else
+        local name = GetFrameDisplayName(target)
+        local ftype = GetFrameType(target)
+        local mouseEnabled = IsMouseEnabled(target)
+        local color = mouseEnabled and "|cFFFFCC00" or "|cFF6688AA"
+        lines[#lines + 1] = color .. name .. "  |cFF888888(" .. ftype .. ")|r"
+    end
+
+    lines[#lines + 1] = ""
+    local filterLabel = showFiltered
+        and "|cFF88AA88Tab: Hide noise frames|r"
+        or "|cFF888888Tab: Show noise frames (UIParent, WorldFrame, etc.)|r"
+    lines[#lines + 1] = "|cFF888888Live top frame  |  Space: Full stack scan  |  Click to select  |  Esc/Right-click to cancel|r"
+    lines[#lines + 1] = filterLabel
+
+    pickerFrame.stackText:SetText(table.concat(lines, "\n"))
+
+    local textH = pickerFrame.stackText:GetStringHeight()
+    local textW = pickerFrame.stackText:GetStringWidth()
+    if (not textH or textH < 20) then textH = 60 end
     if (not textW or textW < 100) then textW = 350 end
     pickerFrame.stackPanel:SetSize(math.min(500, textW + 24), textH + 16)
 end
@@ -242,6 +292,11 @@ function Picker:Create()
     pickerFrame:SetFrameLevel(199)
     pickerFrame:SetAllPoints(UIParent)
     pickerFrame:EnableMouse(true)
+    -- Let native mouse-focus resolution (GetMouseFoci, used by GetLiveTarget)
+    -- see past this full-screen capture overlay to the real frame beneath,
+    -- while still receiving our own OnMouseDown/OnMouseWheel normally --
+    -- motion propagation is independent of click/wheel event delivery.
+    pickerFrame:SetPropagateMouseMotion(true)
     pickerFrame:EnableKeyboard(true)
     pickerFrame:Hide()
 
@@ -281,13 +336,15 @@ function Picker:Create()
     titleText:SetTextColor(0.4, 0.7, 1, 0.9)
     pickerFrame.titleText = titleText
 
-    -- OnUpdate: rebuild frame stack periodically, but only when the cursor
-    -- has actually moved -- skips the expensive walk entirely while the
-    -- user is just holding still reading the stack, which is most of the
-    -- time this tool is actually open.
+    -- OnUpdate: live mode continuously (but cheaply, via GetLiveTarget)
+    -- resolves the top frame under the cursor, throttled and skipped when
+    -- the cursor hasn't moved. Frozen entirely once a full scan (Space) is
+    -- active -- that's a snapshot until the user re-scans or cancels.
     local elapsed = 0
     local lastCursorX, lastCursorY = nil, nil
     pickerFrame:SetScript("OnUpdate", function(_, dt)
+        if scanMode then return end
+
         elapsed = elapsed + dt
         if elapsed < UPDATE_INTERVAL then return end
         elapsed = 0
@@ -296,26 +353,22 @@ function Picker:Create()
         if cx == lastCursorX and cy == lastCursorY then return end
         lastCursorX, lastCursorY = cx, cy
 
-        frameStack = BuildFrameStack()
-
-        -- Clamp index
-        if stackIndex > #frameStack then stackIndex = #frameStack end
-        if stackIndex < 1 then stackIndex = 1 end
-
-        -- Update highlight
-        local selected = frameStack[stackIndex]
-        if selected then
-            DF.InspectorHighlight:Show(selected.frame)
+        liveTarget = GetLiveTarget()
+        if liveTarget then
+            DF.InspectorHighlight:Show(liveTarget)
+        else
+            DF.InspectorHighlight:Hide()
         end
 
-        -- Update display
-        pickerFrame.titleText:SetText("Frame Stack (" .. #frameStack .. " frames)")
-        UpdateStackDisplay()
+        pickerFrame.titleText:SetText("Live Frame")
+        UpdateLiveDisplay(liveTarget)
     end)
 
-    -- Mouse wheel to cycle through stack
+    -- Mouse wheel cycles through the stack, only meaningful once a full
+    -- scan snapshot exists -- nothing to cycle through in live mode.
     pickerFrame:EnableMouseWheel(true)
     pickerFrame:SetScript("OnMouseWheel", function(_, delta)
+        if not scanMode then return end
         if #frameStack == 0 then return end
         stackIndex = stackIndex - delta  -- scroll up = previous (higher strata)
         if stackIndex < 1 then stackIndex = 1 end
@@ -328,12 +381,17 @@ function Picker:Create()
         UpdateStackDisplay()
     end)
 
-    -- Left click = pick selected, Right click = cancel
+    -- Left click = pick selected (scan mode) or live target, Right click = cancel
     pickerFrame:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then
-            local selected = frameStack[stackIndex]
-            if selected then
-                local picked = selected.frame
+            local picked
+            if scanMode then
+                local selected = frameStack[stackIndex]
+                picked = selected and selected.frame
+            else
+                picked = liveTarget
+            end
+            if picked then
                 local cb = onPick
                 Picker:Stop()
                 if cb then cb(picked) end
@@ -345,21 +403,31 @@ function Picker:Create()
         end
     end)
 
-    -- Keyboard: Escape cancel, Up/Down to cycle, Tab to toggle filter
+    -- Keyboard: Escape cancel, Up/Down to cycle (scan mode only), Tab to
+    -- toggle noise filter, Space to run a full stack scan at the cursor
     pickerFrame:SetScript("OnKeyDown", function(_, key)
         if key == "ESCAPE" then
             local cb = onCancel
             Picker:Stop()
             if cb then cb() end
+        elseif key == "SPACE" then
+            scanMode = true
+            stackIndex = 1
+            frameStack = BuildFrameStack()
+            if stackIndex > #frameStack then stackIndex = #frameStack end
+            local selected = frameStack[stackIndex]
+            if selected then DF.InspectorHighlight:Show(selected.frame) end
+            pickerFrame.titleText:SetText("Frame Stack (" .. #frameStack .. " frames)")
+            UpdateStackDisplay()
         elseif key == "UP" then
-            if stackIndex > 1 then
+            if scanMode and stackIndex > 1 then
                 stackIndex = stackIndex - 1
                 local selected = frameStack[stackIndex]
                 if selected then DF.InspectorHighlight:Show(selected.frame) end
                 UpdateStackDisplay()
             end
         elseif key == "DOWN" then
-            if stackIndex < #frameStack then
+            if scanMode and stackIndex < #frameStack then
                 stackIndex = stackIndex + 1
                 local selected = frameStack[stackIndex]
                 if selected then DF.InspectorHighlight:Show(selected.frame) end
@@ -367,11 +435,21 @@ function Picker:Create()
             end
         elseif key == "TAB" then
             showFiltered = not showFiltered
-            stackIndex = 1
-            frameStack = BuildFrameStack()
-            local selected = frameStack[stackIndex]
-            if selected then DF.InspectorHighlight:Show(selected.frame) end
-            UpdateStackDisplay()
+            if scanMode then
+                stackIndex = 1
+                frameStack = BuildFrameStack()
+                local selected = frameStack[stackIndex]
+                if selected then DF.InspectorHighlight:Show(selected.frame) end
+                UpdateStackDisplay()
+            else
+                liveTarget = GetLiveTarget()
+                if liveTarget then
+                    DF.InspectorHighlight:Show(liveTarget)
+                else
+                    DF.InspectorHighlight:Hide()
+                end
+                UpdateLiveDisplay(liveTarget)
+            end
         end
     end)
 end
@@ -383,6 +461,8 @@ function Picker:Start(pickCallback, cancelCallback)
     frameStack = {}
     stackIndex = 1
     showFiltered = false
+    scanMode = false
+    liveTarget = nil
     -- Cache screen size for fullscreen detection
     screenW = UIParent:GetWidth()
     screenH = UIParent:GetHeight()
@@ -397,6 +477,8 @@ function Picker:Stop()
     DF.InspectorHighlight:Hide()
     frameStack = {}
     stackIndex = 1
+    scanMode = false
+    liveTarget = nil
     onPick = nil
     onCancel = nil
 end

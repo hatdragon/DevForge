@@ -16,6 +16,7 @@ function MacList:Create(parent)
         rows = {},
         selectedIndex = nil,
         onSelect = nil,
+        filterText = "",
     }
 
     function list:GetRow(idx)
@@ -100,6 +101,8 @@ function MacList:Create(parent)
         local contentW = self.pane:GetContent():GetWidth()
         local yOffset = 0
         local rowIdx = 0
+        local filter = self.filterText or ""
+        local filtering = filter ~= ""
 
         -- Account Macros header
         rowIdx = rowIdx + 1
@@ -120,7 +123,7 @@ function MacList:Create(parent)
 
         -- Account macro rows
         for _, macro in ipairs(allMacros) do
-            if not macro.isCharacter then
+            if not macro.isCharacter and (not filtering or DF.Util:ContainsCI(macro.name or "", filter)) then
                 rowIdx = rowIdx + 1
                 local row = self:GetRow(rowIdx)
                 row:SetWidth(contentW)
@@ -175,7 +178,7 @@ function MacList:Create(parent)
 
         -- Character macro rows
         for _, macro in ipairs(allMacros) do
-            if macro.isCharacter then
+            if macro.isCharacter and (not filtering or DF.Util:ContainsCI(macro.name or "", filter)) then
                 rowIdx = rowIdx + 1
                 local row = self:GetRow(rowIdx)
                 row:SetWidth(contentW)
@@ -223,6 +226,11 @@ function MacList:Create(parent)
                 end
             end
         end
+    end
+
+    function list:SetFilter(text)
+        self.filterText = text or ""
+        self:Refresh()
     end
 
     function list:SetOnSelect(callback)

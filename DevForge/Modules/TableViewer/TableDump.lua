@@ -234,6 +234,12 @@ function TableDump:BuildNodes(value, path, depth, seen)
     for _, k in ipairs(keys) do
         if shown >= MAX_CHILDREN then
             local remaining = #keys - shown
+            -- Snapshot (not a live reference) of the ancestor chain at this
+            -- point: `seen` itself gets popped clean as BuildNodes' own
+            -- recursion unwinds, so by the time the user actually clicks
+            -- "load more" the live table would already be empty again.
+            local seenSnapshot = {}
+            for k in pairs(seen) do seenSnapshot[k] = true end
             nodes[#nodes + 1] = {
                 id = path .. ".__truncated",
                 text = DF.Colors.dim .. "... (" .. remaining .. " more — click to load)|r",
@@ -245,6 +251,7 @@ function TableDump:BuildNodes(value, path, depth, seen)
                     path = path,
                     depth = depth,
                     parentNodes = nodes,
+                    seen = seenSnapshot,
                 },
             }
             break
@@ -316,7 +323,10 @@ function TableDump:LoadMore(node)
     parentNodes[#parentNodes] = nil
 
     local shown = 0
-    local seen = {}
+    -- Ancestor snapshot captured when this page was truncated (see
+    -- BuildNodes) -- reused as-is so circular references reached only
+    -- through a later page are still caught, matching first-page behavior.
+    local seen = d.seen or {}
 
     for i = offset + 1, #keys do
         if shown >= MAX_CHILDREN then
@@ -332,6 +342,7 @@ function TableDump:LoadMore(node)
                     path = path,
                     depth = depth,
                     parentNodes = parentNodes,
+                    seen = seen,
                 },
             }
             break
@@ -346,9 +357,9 @@ function TableDump:LoadMore(node)
                 id = path .. "." .. tostring(k),
                 text = DF.Colors.text .. self:FormatKey(k) .. "|r = " .. DF.Colors.secret .. "[secret]|r",
             }
-        elseif type(v) == "table" then
+        elseif type(v) == "table" and not seen[v] then
             local childPath = path .. "." .. tostring(k)
-            local children = self:BuildNodes(v, childPath, (depth or 0) + 1)
+            local children = self:BuildNodes(v, childPath, (depth or 0) + 1, seen)
             parentNodes[#parentNodes + 1] = {
                 id = childPath,
                 text = DF.Colors.text .. self:FormatKey(k) .. "|r = " .. self:FormatValue(v),
@@ -356,9 +367,15 @@ function TableDump:LoadMore(node)
                 data = { key = k, value = v },
             }
         else
+            local displayVal
+            if type(v) == "table" and seen[v] then
+                displayVal = DF.Colors.dim .. "[circular reference]|r"
+            else
+                displayVal = self:FormatValue(v)
+            end
             parentNodes[#parentNodes + 1] = {
                 id = path .. "." .. tostring(k),
-                text = DF.Colors.text .. self:FormatKey(k) .. "|r = " .. self:FormatValue(v),
+                text = DF.Colors.text .. self:FormatKey(k) .. "|r = " .. displayVal,
                 data = { key = k, value = v },
             }
         end

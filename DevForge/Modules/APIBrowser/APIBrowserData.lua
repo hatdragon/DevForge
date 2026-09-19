@@ -7,6 +7,7 @@ local Data = DF.APIBrowserData
 local systems = nil
 local systemIndex = {}   -- name -> system
 local allFunctions = {}  -- flat list of { name, fullName, system, type, doc }
+local byFullName = {}    -- fullName -> entry (same tables as allFunctions)
 local loaded = false
 local loadError = nil
 
@@ -195,6 +196,7 @@ end
 function Data:BuildIndex()
     wipe(systemIndex)
     wipe(allFunctions)
+    wipe(byFullName)
 
     if not systems then return end
 
@@ -205,39 +207,45 @@ function Data:BuildIndex()
         -- Index functions
         if system.Functions then
             for _, func in ipairs(system.Functions) do
-                allFunctions[#allFunctions + 1] = {
+                local entry = {
                     name = func.Name,
                     fullName = sysName .. "." .. func.Name,
                     system = sysName,
                     type = "function",
                     doc = func,
                 }
+                allFunctions[#allFunctions + 1] = entry
+                byFullName[entry.fullName] = entry
             end
         end
 
         -- Index events
         if system.Events then
             for _, event in ipairs(system.Events) do
-                allFunctions[#allFunctions + 1] = {
+                local entry = {
                     name = event.Name,
                     fullName = sysName .. ":" .. event.Name,
                     system = sysName,
                     type = "event",
                     doc = event,
                 }
+                allFunctions[#allFunctions + 1] = entry
+                byFullName[entry.fullName] = entry
             end
         end
 
         -- Index tables (enums)
         if system.Tables then
             for _, tbl in ipairs(system.Tables) do
-                allFunctions[#allFunctions + 1] = {
+                local entry = {
                     name = tbl.Name,
                     fullName = sysName .. "." .. tbl.Name,
                     system = sysName,
                     type = "table",
                     doc = tbl,
                 }
+                allFunctions[#allFunctions + 1] = entry
+                byFullName[entry.fullName] = entry
             end
         end
     end
@@ -269,6 +277,11 @@ end
 -- Get all indexed entries (for search)
 function Data:GetAllEntries()
     return allFunctions
+end
+
+-- Get a single entry by its full dotted/colon name (e.g. "C_Item.GetItemCount")
+function Data:GetEntryByFullName(fullName)
+    return byFullName[fullName]
 end
 
 -- Check if loaded

@@ -362,14 +362,18 @@ function Props:BuildSections(frame)
         sections[#sections + 1] = anchors
     end
 
-    -- Events (check common events)
+    -- Events (check common events). IsEventRegistered's result can be a
+    -- WoW 12.0 secret boolean -- boolean-testing one directly throws, so
+    -- this goes through SecretGuard:SafeGet (a plain pcall around the call
+    -- isn't enough, since the crash happens on the *returned value*, not
+    -- the call itself).
     local hasEventReg = pcall(function() return frame.IsEventRegistered end) and frame.IsEventRegistered
     if hasEventReg then
         local events = { title = "Registered Events", props = {} }
         local found = false
         for _, event in ipairs(COMMON_EVENTS) do
-            local ok, registered = pcall(function() return frame:IsEventRegistered(event) end)
-            if ok and registered then
+            local registered = DF.SecretGuard:SafeGet(frame, "IsEventRegistered", event)
+            if registered then
                 events.props[#events.props + 1] = { key = event, value = DF.Colors.boolTrue .. "true|r" }
                 found = true
             end
@@ -380,19 +384,19 @@ function Props:BuildSections(frame)
         sections[#sections + 1] = events
     end
 
-    -- Scripts
+    -- Scripts (same secret-value hazard as above for HasScript's result)
     local hasScript = pcall(function() return frame.HasScript end) and frame.HasScript
     if hasScript then
         local scripts = { title = "Scripts", props = {} }
         local found = false
         for _, handler in ipairs(COMMON_SCRIPTS) do
-            local ok, has = pcall(function() return frame:HasScript(handler) end)
-            if ok and has then
-                local scriptOk, scriptFn = pcall(function() return frame:GetScript(handler) end)
-                if scriptOk and scriptFn then
+            local has = DF.SecretGuard:SafeGet(frame, "HasScript", handler)
+            if has then
+                local scriptFn = DF.SecretGuard:SafeGet(frame, "GetScript", handler)
+                if scriptFn then
                     scripts.props[#scripts.props + 1] = { key = handler, value = DF.Colors.func .. tostring(scriptFn) .. "|r" }
                     found = true
-                elseif scriptOk then
+                else
                     scripts.props[#scripts.props + 1] = { key = handler, value = DF.Colors.dim .. "(no handler)|r" }
                 end
             end

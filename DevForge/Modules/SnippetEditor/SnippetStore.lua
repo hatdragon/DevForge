@@ -105,6 +105,18 @@ function Store:Save(id, name, code)
     return snippet
 end
 
+-- Attach/update a snippet's Frame Builder state. Presence of builderState
+-- is what makes a snippet "builder-backed" (editable in Builder view);
+-- snippet.code stays the text generated from it, kept in sync by the
+-- caller via Store:Save.
+function Store:SaveBuilderState(id, state)
+    local snippet = self:Get(id)
+    if not snippet then return nil end
+    snippet.builderState = state
+    snippet.modified = GetTime()
+    return snippet
+end
+
 -- Delete a snippet (cascade: if project, also delete all children)
 function Store:Delete(id)
     self:Init()
@@ -144,6 +156,7 @@ function Store:Duplicate(id)
         code = original.code,
         modified = GetTime(),
         parentId = original.parentId,
+        builderState = original.builderState and DF.Util:DeepCopy(original.builderState) or nil,
     }
     DevForgeDB.snippets[#DevForgeDB.snippets + 1] = snippet
     return snippet

@@ -313,10 +313,20 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     local codeEditor = DF.Widgets:CreateCodeEditBox(editorContent, {
         multiLine = true,
         readOnly = false,
+        autocomplete = true,
     })
     codeEditor.frame:SetPoint("TOPLEFT", nameRow, "BOTTOMLEFT", 0, -2)
     codeEditor.frame:SetPoint("BOTTOMRIGHT", 0, 0)
     codeEditor:SetOnSaveShortcut(function() saveBtn:Click() end)
+
+    -- Frame Builder view: shown instead of codeEditor for snippets that
+    -- carry a builderState (see FrameBuilder.lua's CreateEmbedded). Same
+    -- region as codeEditor; codeEditor stays hidden and inert underneath
+    -- so it never diverges from what the builder generates.
+    local frameBuilder = DF.FrameBuilder:CreateEmbedded(editorContent)
+    frameBuilder.frame:SetPoint("TOPLEFT", nameRow, "BOTTOMLEFT", 0, -2)
+    frameBuilder.frame:SetPoint("BOTTOMRIGHT", 0, 0)
+    frameBuilder.frame:Hide()
 
     ---------------------------------------------------------------------------
     -- Logic
@@ -326,6 +336,15 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         local name = nameInput:GetText()
         local code = codeEditor:GetText()
         DF.SnippetStore:Save(activeTabId, name, code)
+    end
+
+    -- Persists a Frame Builder edit: builderState is the source of truth,
+    -- and snippet.code is kept mirroring the text generated from it so
+    -- Run/Copy/"Run Project" keep working unchanged.
+    local function OnBuilderChange(state, code)
+        if not activeTabId then return end
+        DF.SnippetStore:SaveBuilderState(activeTabId, state)
+        DF.SnippetStore:Save(activeTabId, nil, code)
     end
 
     -- Rebuild the tab strip from openTabs + persist it
@@ -378,6 +397,15 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
         if codeEditor.ResetUndo then codeEditor:ResetUndo() end
         snippetList:SetSelected(id)
         tabStrip:SetActive(id)
+
+        if snippet.builderState then
+            codeEditor.frame:Hide()
+            frameBuilder.frame:Show()
+            frameBuilder:LoadState(snippet.builderState, OnBuilderChange)
+        else
+            frameBuilder.frame:Hide()
+            codeEditor.frame:Show()
+        end
 
         if DevForgeDB then
             DevForgeDB.lastSnippetId = id
@@ -669,9 +697,11 @@ DF.ModuleSystem:Register("SnippetEditor", function(sidebarParent, editorParent)
     end)
 
     frameBuilderBtn:SetScript("OnClick", function()
-        DF.FrameBuilder:Show(function(code, snippetName)
-            InsertCode(code, snippetName)
-        end)
+        SaveCurrent()
+        local snippet = DF.SnippetStore:Create("Untitled Frame")
+        DF.SnippetStore:SaveBuilderState(snippet.id, {})
+        snippetList:Refresh()
+        OpenTab(snippet.id)
     end)
 
     scaffoldBtn:SetScript("OnClick", function()

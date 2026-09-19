@@ -18,8 +18,17 @@ DF.ModuleSystem:Register("MacroEditor", function(sidebarParent, editorParent)
         sidebarFrame:SetAllPoints(sidebarParent)
     end
 
+    local macroSearch = DF.Widgets:CreateSearchBox(sidebarFrame, "Filter macros...", 22)
+    macroSearch.frame:SetPoint("TOPLEFT", sidebarFrame, "TOPLEFT", 2, -2)
+    macroSearch.frame:SetPoint("TOPRIGHT", sidebarFrame, "TOPRIGHT", -2, -2)
+
     local macroList = DF.MacroList:Create(sidebarFrame)
-    macroList.frame:SetAllPoints(sidebarFrame)
+    macroList.frame:SetPoint("TOPLEFT", macroSearch.frame, "BOTTOMLEFT", 0, -2)
+    macroList.frame:SetPoint("BOTTOMRIGHT", sidebarFrame, "BOTTOMRIGHT", 0, 0)
+
+    macroSearch:SetOnSearch(function(text)
+        macroList:SetFilter(text)
+    end)
 
     ---------------------------------------------------------------------------
     -- Editor: toolbar + name/icon + code editor + output

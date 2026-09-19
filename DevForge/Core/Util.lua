@@ -166,6 +166,10 @@ function Util:IsFullscreenFrame(frame)
     local okW, w = pcall(frame.GetWidth, frame)
     local okH, h = pcall(frame.GetHeight, frame)
     if not (okW and okH and w and h) then return false end
+    -- GetWidth/GetHeight can return a WoW 12.0 secret number (seen on some
+    -- unit frames); comparing one with >= throws even though the call
+    -- itself succeeded, so the pcall above doesn't catch it.
+    if SecretGuard:IsSecret(w) or SecretGuard:IsSecret(h) then return false end
     local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
     return w >= screenW - 2 and h >= screenH - 2
 end
@@ -213,4 +217,64 @@ end
 function Util:Truncate(s, maxLen)
     if #s <= maxLen then return s end
     return s:sub(1, maxLen - 3) .. "..."
+end
+
+-- Byte offset (0-based, matching EditBox:SetCursorPosition) of the start
+-- of 1-based line `lineNumber` in `text`.
+function Util:LineStartOffset(text, lineNumber)
+    if lineNumber <= 1 then return 0 end
+    local line = 1
+    local pos = 1
+    while line < lineNumber do
+        local nl = text:find("\n", pos, true)
+        if not nl then return #text end
+        pos = nl + 1
+        line = line + 1
+    end
+    return pos - 1
+end
+
+-- 1-based line number containing 0-based byte offset `offset`.
+function Util:OffsetToLine(text, offset)
+    local line = 1
+    for i = 1, math.min(offset, #text) do
+        if text:byte(i) == 10 then -- "\n"
+            line = line + 1
+        end
+    end
+    return line
+end
+
+-- Tokenizes Lua source into a flat array of
+-- {type, text, isKeyword, startPos, endPos}, dropping whitespace,
+-- linebreaks, and comments (never load-bearing for statement-shape
+-- matching). Built on the vendored FAIAP lexer (DF.Indent.nextToken/
+-- keywords, Libs/FAIAP/FAIAP.lua) rather than raw string patterns, so
+-- string/comment boundaries (escaped quotes, an "end" inside a string,
+-- etc.) are handled correctly. Not a full Lua parser -- just a reusable
+-- token stream for code that only needs to recognize specific statement
+-- shapes (see FrameBuilder.lua's own file-local Tokenize for the
+-- original of this pattern).
+function Util:TokenizeLua(text)
+    local Indent = DF.Indent
+    local TT = Indent.tokens
+    local out = {}
+    local pos, len = 1, #text
+    while pos <= len do
+        local tokenType, nextPos = Indent.nextToken(text, pos)
+        if not tokenType then break end
+        if tokenType ~= TT.TOKEN_WHITESPACE and tokenType ~= TT.TOKEN_LINEBREAK
+            and tokenType ~= TT.TOKEN_COMMENT_SHORT and tokenType ~= TT.TOKEN_COMMENT_LONG then
+            local raw = text:sub(pos, nextPos - 1)
+            out[#out + 1] = {
+                type = tokenType,
+                text = raw,
+                isKeyword = (tokenType == TT.TOKEN_IDENTIFIER) and Indent.keywords[raw] ~= nil,
+                startPos = pos,
+                endPos = nextPos - 1,
+            }
+        end
+        pos = nextPos
+    end
+    return out
 end

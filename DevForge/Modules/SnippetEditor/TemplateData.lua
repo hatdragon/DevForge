@@ -32,7 +32,7 @@ DF.SnippetTemplates.templates = {
             { token = "VERSION", label = "Version", default = "1.0.0" },
             { token = "DB_NAME", label = "SavedVariable Name", default = "MyAddonDB" },
         },
-        code = [[## Interface: 120100
+        code = [[## Interface: 120105
 ## Title: $TITLE
 ## Notes: $NOTES
 ## Author: $AUTHOR

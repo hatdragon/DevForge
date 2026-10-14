@@ -1,9 +1,9 @@
-## Interface: 120100
+## Interface: 120105
 ## Title: DevForge
 ## Notes: In-game dev toolkit: inspector, editor, console, events, errors, APIs, textures, sounds, performance
 ## Author: hatdragon
 ## Contributors: 
-## Version: r1.6.4
+## Version: r1.6.5
 
 ## SavedVariables: DevForgeDB
 ## IconTexture: Interface\Icons\INV_Gizmo_02

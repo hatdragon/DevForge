@@ -1,3 +1,7 @@
+2026-Oct-13 r1.6.5
+  Improved: Interface version bumped to 120105 for patch 12.1.5
+    - Addon scaffold and TOC File template now emit "## Interface: 120105"
+
 2026-Sep-15 r1.6.4
   Fixed: clicking an autocomplete suggestion left the code editor unfocused
     - Clicking (unlike Enter/Tab) blurs the EditBox first, so keystrokes
